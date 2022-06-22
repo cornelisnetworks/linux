@@ -591,27 +591,27 @@ static inline dma_addr_t sdma_mapping_addr(struct sdma_desc *d)
 		>> SDMA_DESC0_PHY_ADDR_SHIFT;
 }
 
-static inline void make_tx_sdma_desc(
-	struct sdma_txreq *tx,
-	int type,
-	dma_addr_t addr,
-	size_t len)
+static inline void make_tx_sdma_desc(struct sdma_txreq *tx, int map_type,
+				     int mem_type, void *pinning_ctx,
+				     dma_addr_t addr, size_t len)
 {
 	struct sdma_desc *desc = &tx->descp[tx->num_desc];
 
 	if (!tx->num_desc) {
 		/* qw[0] zero; qw[1] first, ahg mode already in from init */
-		desc->qw[1] |= ((u64)type & SDMA_DESC1_GENERATION_MASK)
-				<< SDMA_DESC1_GENERATION_SHIFT;
+		desc->qw[1] |= ((u64)map_type & SDMA_DESC1_GENERATION_MASK)
+			       << SDMA_DESC1_GENERATION_SHIFT;
 	} else {
 		desc->qw[0] = 0;
-		desc->qw[1] = ((u64)type & SDMA_DESC1_GENERATION_MASK)
-				<< SDMA_DESC1_GENERATION_SHIFT;
+		desc->qw[1] = ((u64)map_type & SDMA_DESC1_GENERATION_MASK)
+			      << SDMA_DESC1_GENERATION_SHIFT;
 	}
 	desc->qw[0] |= (((u64)addr & SDMA_DESC0_PHY_ADDR_MASK)
 				<< SDMA_DESC0_PHY_ADDR_SHIFT) |
 			(((u64)len & SDMA_DESC0_BYTE_COUNT_MASK)
 				<< SDMA_DESC0_BYTE_COUNT_SHIFT);
+	desc->mem_type = mem_type;
+	desc->pinning_ctx = pinning_ctx;
 }
 
 /* helper to extend txreq */
@@ -640,19 +640,14 @@ static inline void _sdma_close_tx(struct hfi1_devdata *dd,
 					       SDMA_DESC1_INT_REQ_FLAG);
 }
 
-static inline int _sdma_txadd_daddr(
-	struct hfi1_devdata *dd,
-	int type,
-	struct sdma_txreq *tx,
-	dma_addr_t addr,
-	u16 len)
+static inline int _sdma_txadd_daddr(struct hfi1_devdata *dd, int map_type,
+				    int mem_type, void *pinning_ctx,
+				    struct sdma_txreq *tx, dma_addr_t addr,
+				    u16 len)
 {
 	int rval = 0;
 
-	make_tx_sdma_desc(
-		tx,
-		type,
-		addr, len);
+	make_tx_sdma_desc(tx, map_type, mem_type, pinning_ctx, addr, len);
 	WARN_ON(len > tx->tlen);
 	tx->num_desc++;
 	tx->tlen -= len;
@@ -672,6 +667,7 @@ static inline int _sdma_txadd_daddr(
 /**
  * sdma_txadd_page() - add a page to the sdma_txreq
  * @dd: the device to use for mapping
+ * @pinning_ctx: supplied to pinning interface at descriptor retirement
  * @tx: tx request to which the page is added
  * @page: page to map
  * @offset: offset within the page
@@ -685,12 +681,9 @@ static inline int _sdma_txadd_daddr(
  * 0 - success, -ENOSPC - mapping fail, -ENOMEM - couldn't
  * extend/coalesce descriptor array
  */
-static inline int sdma_txadd_page(
-	struct hfi1_devdata *dd,
-	struct sdma_txreq *tx,
-	struct page *page,
-	unsigned long offset,
-	u16 len)
+static inline int sdma_txadd_page(struct hfi1_devdata *dd, void *pinning_ctx,
+				  struct sdma_txreq *tx, struct page *page,
+				  unsigned long offset, u16 len)
 {
 	dma_addr_t addr;
 	int rval;
@@ -714,8 +707,8 @@ static inline int sdma_txadd_page(
 		return -ENOSPC;
 	}
 
-	return _sdma_txadd_daddr(
-			dd, SDMA_MAP_PAGE, tx, addr, len);
+	return _sdma_txadd_daddr(dd, SDMA_MAP_PAGE, HFI1_MEMINFO_TYPE_SYSTEM,
+				 pinning_ctx, tx, addr, len);
 }
 
 /**
@@ -734,11 +727,9 @@ static inline int sdma_txadd_page(
  * 0 - success, -ENOMEM - couldn't extend descriptor array
  */
 
-static inline int sdma_txadd_daddr(
-	struct hfi1_devdata *dd,
-	struct sdma_txreq *tx,
-	dma_addr_t addr,
-	u16 len)
+static inline int sdma_txadd_daddr(struct hfi1_devdata *dd, int mem_type,
+				   void *pinning_ctx, struct sdma_txreq *tx,
+				   dma_addr_t addr, u16 len)
 {
 	int rval;
 
@@ -749,7 +740,8 @@ static inline int sdma_txadd_daddr(
 			return rval;
 	}
 
-	return _sdma_txadd_daddr(dd, SDMA_MAP_NONE, tx, addr, len);
+	return _sdma_txadd_daddr(dd, SDMA_MAP_NONE, mem_type, pinning_ctx, tx,
+				 addr, len);
 }
 
 /**
@@ -795,8 +787,8 @@ static inline int sdma_txadd_kvaddr(
 		return -ENOSPC;
 	}
 
-	return _sdma_txadd_daddr(
-			dd, SDMA_MAP_SINGLE, tx, addr, len);
+	return _sdma_txadd_daddr(dd, SDMA_MAP_SINGLE, HFI1_MEMINFO_TYPE_SYSTEM,
+				 NULL, tx, addr, len);
 }
 
 struct iowait_work;
