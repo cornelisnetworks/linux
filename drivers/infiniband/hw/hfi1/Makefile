@@ -31,6 +31,8 @@ hfi1-y := \
 	netdev_rx.o \
 	opfn.o \
 	pcie.o \
+	pinning.o \
+	pin_system.o \
 	pio.o \
 	pio_copy.o \
 	platform.o \
