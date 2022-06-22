@@ -214,11 +214,8 @@ static int hfi1_ipoib_build_ulp_payload(struct ipoib_txreq *tx,
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		const skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 
-		ret = sdma_txadd_page(dd,
-				      txreq,
-				      skb_frag_page(frag),
-				      frag->bv_offset,
-				      skb_frag_size(frag));
+		ret = sdma_txadd_page(dd, NULL, txreq, skb_frag_page(frag),
+				      frag->bv_offset, skb_frag_size(frag));
 		if (unlikely(ret))
 			break;
 	}

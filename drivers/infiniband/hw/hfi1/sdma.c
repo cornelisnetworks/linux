@@ -1593,22 +1593,7 @@ static inline void sdma_unmap_desc(
 	struct hfi1_devdata *dd,
 	struct sdma_desc *descp)
 {
-	switch (sdma_mapping_type(descp)) {
-	case SDMA_MAP_SINGLE:
-		dma_unmap_single(
-			&dd->pcidev->dev,
-			sdma_mapping_addr(descp),
-			sdma_mapping_len(descp),
-			DMA_TO_DEVICE);
-		break;
-	case SDMA_MAP_PAGE:
-		dma_unmap_page(
-			&dd->pcidev->dev,
-			sdma_mapping_addr(descp),
-			sdma_mapping_len(descp),
-			DMA_TO_DEVICE);
-		break;
-	}
+	sdma_descriptor_complete(descp->mem_type, dd, descp);
 }
 
 /*
@@ -3128,7 +3113,8 @@ int ext_coal_sdma_tx_descs(struct hfi1_devdata *dd, struct sdma_txreq *tx,
 
 		/* Add descriptor for coalesce buffer */
 		tx->desc_limit = MAX_DESC;
-		return _sdma_txadd_daddr(dd, SDMA_MAP_SINGLE, tx,
+		return _sdma_txadd_daddr(dd, SDMA_MAP_SINGLE,
+					 HFI1_MEMINFO_TYPE_SYSTEM, NULL, tx,
 					 addr, tx->tlen);
 	}
 
@@ -3167,12 +3153,11 @@ int _pad_sdma_tx_descs(struct hfi1_devdata *dd, struct sdma_txreq *tx)
 			return rval;
 		}
 	}
+
 	/* finish the one just added */
-	make_tx_sdma_desc(
-		tx,
-		SDMA_MAP_NONE,
-		dd->sdma_pad_phys,
-		sizeof(u32) - (tx->packet_len & (sizeof(u32) - 1)));
+	make_tx_sdma_desc(tx, SDMA_MAP_NONE, HFI1_MEMINFO_TYPE_SYSTEM, NULL,
+			  dd->sdma_pad_phys,
+			  sizeof(u32) - (tx->packet_len & (sizeof(u32) - 1)));
 	tx->num_desc++;
 	_sdma_close_tx(dd, tx);
 	return rval;
