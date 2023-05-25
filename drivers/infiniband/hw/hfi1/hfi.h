@@ -1015,6 +1015,18 @@ struct sdma_vl_map;
 #define BOARD_VERS_MAX 96 /* how long the version string can be */
 #define SERIAL_MAX 16 /* length of the serial number */
 
+/* chip implementation values */
+enum {
+	CHIP_NONE,
+	CHIP_WFR,	/* Intel OPA 100 */
+};
+
+/* chip specific values */
+struct chip_params {
+	int chip_type;
+	int num_ports;
+};
+
 typedef int (*send_routine)(struct rvt_qp *, struct hfi1_pkt_state *, u64);
 struct hfi1_netdev_rx;
 struct hfi1_devdata {
@@ -1028,6 +1040,7 @@ struct hfi1_devdata {
 	struct device *user_device;
 	struct device *diag_device;
 	struct device *ui_device;
+	const struct chip_params *params;
 
 	/* first mapping up to RcvArray */
 	u8 __iomem *kregbase1;

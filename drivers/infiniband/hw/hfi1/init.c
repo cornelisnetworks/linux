@@ -41,7 +41,11 @@
 #define HFI1_MIN_EAGER_BUFFER_SIZE (4 * 1024) /* 4KB */
 #define HFI1_MAX_EAGER_BUFFER_SIZE (256 * 1024) /* 256KB */
 
-#define NUM_IB_PORTS 1
+/* parameters for the WFR ASIC */
+static const struct chip_params wfr_params = {
+	.chip_type = CHIP_WFR,
+	.num_ports = 1,
+};
 
 /*
  * Number of user receive contexts we are configured to use (to allow for more
@@ -1205,18 +1209,19 @@ static void hfi1_free_devdata(struct hfi1_devdata *dd)
  * "extra" is for chip-specific data.
  */
 static struct hfi1_devdata *hfi1_alloc_devdata(struct pci_dev *pdev,
-					       size_t extra)
+					       const struct chip_params *params)
 {
 	struct hfi1_devdata *dd;
+	size_t extra;
 	int ret, nports;
 
-	/* extra is * number of ports */
-	nports = extra / sizeof(struct hfi1_pportdata);
-
+	nports = params->num_ports;
+	extra = nports * sizeof(struct hfi1_pportdata);
 	dd = (struct hfi1_devdata *)rvt_alloc_device(sizeof(*dd) + extra,
 						     nports);
 	if (!dd)
 		return ERR_PTR(-ENOMEM);
+	dd->params = params;
 	dd->num_pports = nports;
 	dd->pport = (struct hfi1_pportdata *)(dd + 1);
 	dd->pcidev = pdev;
@@ -1558,21 +1563,24 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	int ret = 0, j, pidx, initfail;
 	struct hfi1_devdata *dd;
+	const struct chip_params *params;
 
 	/* First, lock the non-writable module parameters */
 	HFI1_CAP_LOCK();
 
 	/* Validate dev ids */
-	if (!(ent->device == PCI_DEVICE_ID_INTEL0 ||
+	if (ent->vendor == PCI_VENDOR_ID_INTEL &&
+	    (ent->device == PCI_DEVICE_ID_INTEL0 ||
 	      ent->device == PCI_DEVICE_ID_INTEL1)) {
-		dev_err(&pdev->dev, "Failing on unknown Intel deviceid 0x%x\n",
-			ent->device);
+		params = &wfr_params;
+	} else {
+		dev_err(&pdev->dev, "Failing on unknown device %04x:%04x\n",
+			ent->vendor, ent->device);
 		return -ENODEV;
 	}
 
 	/* Allocate the dd so we can get to work */
-	dd = hfi1_alloc_devdata(pdev, NUM_IB_PORTS *
-				sizeof(struct hfi1_pportdata));
+	dd = hfi1_alloc_devdata(pdev, params);
 	if (IS_ERR(dd))
 		return PTR_ERR(dd);
 
