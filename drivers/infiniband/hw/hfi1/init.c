@@ -630,8 +630,6 @@ void hfi1_init_pportdata(struct pci_dev *pdev, struct hfi1_pportdata *ppd,
 	ppd->sm_trap_qp = 0x0;
 	ppd->sa_qp = 0x1;
 
-	ppd->hfi1_wq = NULL;
-
 	spin_lock_init(&ppd->cca_timer_lock);
 
 	for (i = 0; i < OPA_MAX_SLS; i++) {
@@ -1165,7 +1163,7 @@ static void finalize_asic_data(struct hfi1_devdata *dd,
  * It cleans up and frees all data structures set up by
  * by hfi1_alloc_devdata().
  */
-void hfi1_free_devdata(struct hfi1_devdata *dd)
+static void hfi1_free_devdata(struct hfi1_devdata *dd)
 {
 	struct hfi1_asic_data *ad;
 	unsigned long flags;
@@ -1548,10 +1546,11 @@ static void postinit_cleanup(struct hfi1_devdata *dd)
 	hfi1_dev_affinity_clean_up(dd);
 
 	hfi1_pcie_ddcleanup(dd);
-	hfi1_pcie_cleanup(dd->pcidev);
 
 	cleanup_device_data(dd);
 
+	destroy_workqueues(dd);
+	hfi1_pcie_cleanup(dd->pcidev);
 	hfi1_free_devdata(dd);
 }
 
@@ -1559,7 +1558,6 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	int ret = 0, j, pidx, initfail;
 	struct hfi1_devdata *dd;
-	struct hfi1_pportdata *ppd;
 
 	/* First, lock the non-writable module parameters */
 	HFI1_CAP_LOCK();
@@ -1569,29 +1567,26 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	      ent->device == PCI_DEVICE_ID_INTEL1)) {
 		dev_err(&pdev->dev, "Failing on unknown Intel deviceid 0x%x\n",
 			ent->device);
-		ret = -ENODEV;
-		goto bail;
+		return -ENODEV;
 	}
 
 	/* Allocate the dd so we can get to work */
 	dd = hfi1_alloc_devdata(pdev, NUM_IB_PORTS *
 				sizeof(struct hfi1_pportdata));
-	if (IS_ERR(dd)) {
-		ret = PTR_ERR(dd);
-		goto bail;
-	}
+	if (IS_ERR(dd))
+		return PTR_ERR(dd);
 
 	/* Validate some global module parameters */
 	ret = hfi1_validate_rcvhdrcnt(dd, rcvhdrcnt);
 	if (ret)
-		goto bail;
+		goto free_dd;
 
 	/* use the encoding function as a sanitization check */
 	if (!encode_rcv_header_entry_size(hfi1_hdrq_entsize)) {
 		dd_dev_err(dd, "Invalid HdrQ Entry size %u\n",
 			   hfi1_hdrq_entsize);
 		ret = -EINVAL;
-		goto bail;
+		goto free_dd;
 	}
 
 	/* The receive eager buffer size must be set before the receive
@@ -1616,7 +1611,7 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	} else {
 		dd_dev_err(dd, "Invalid Eager buffer size of 0\n");
 		ret = -EINVAL;
-		goto bail;
+		goto free_dd;
 	}
 
 	/* restrict value of hfi1_rcvarr_split */
@@ -1624,19 +1619,19 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	ret = hfi1_pcie_init(dd);
 	if (ret)
-		goto bail;
-
-	/*
-	 * Do device-specific initialization, function table setup, dd
-	 * allocation, etc.
-	 */
-	ret = hfi1_init_dd(dd);
-	if (ret)
-		goto clean_bail; /* error already printed */
+		goto free_dd;
 
 	ret = create_workqueues(dd);
 	if (ret)
-		goto clean_bail;
+		goto pcie_cleanup;
+
+	/*
+	 * Do device-specific initialization.  If hfi1_init_dd() fails, it
+	 * cleans up after itself.
+	 */
+	ret = hfi1_init_dd(dd);
+	if (ret)
+		goto destroy_wqs; /* error already printed */
 
 	/* do the generic initialization */
 	initfail = hfi1_init(dd, 0);
@@ -1663,18 +1658,8 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		msix_clean_up_interrupts(dd);
 		stop_timers(dd);
 		flush_workqueue(ib_wq);
-		for (pidx = 0; pidx < dd->num_pports; ++pidx) {
+		for (pidx = 0; pidx < dd->num_pports; ++pidx)
 			hfi1_quiet_serdes(dd->pport + pidx);
-			ppd = dd->pport + pidx;
-			if (ppd->hfi1_wq) {
-				destroy_workqueue(ppd->hfi1_wq);
-				ppd->hfi1_wq = NULL;
-			}
-			if (ppd->link_wq) {
-				destroy_workqueue(ppd->link_wq);
-				ppd->link_wq = NULL;
-			}
-		}
 		if (!j)
 			hfi1_device_remove(dd);
 		if (!ret)
@@ -1689,8 +1674,12 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	return 0;
 
-clean_bail:
+destroy_wqs:
+	destroy_workqueues(dd);
+pcie_cleanup:
 	hfi1_pcie_cleanup(pdev);
+free_dd:
+	hfi1_free_devdata(dd);
 bail:
 	return ret;
 }
@@ -1731,7 +1720,6 @@ static void remove_one(struct pci_dev *pdev)
 	 * clear dma engines, etc.
 	 */
 	shutdown_device(dd);
-	destroy_workqueues(dd);
 
 	stop_timers(dd);
 
