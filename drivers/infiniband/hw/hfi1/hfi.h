@@ -1019,6 +1019,7 @@ struct sdma_vl_map;
 enum {
 	CHIP_NONE,
 	CHIP_WFR,	/* Intel OPA 100 */
+	CHIP_JKR,	/* CN 5000 */
 };
 
 /* chip specific values */

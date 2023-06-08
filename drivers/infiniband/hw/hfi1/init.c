@@ -47,6 +47,12 @@ static const struct chip_params wfr_params = {
 	.num_ports = 1,
 };
 
+/* parameters for the JKR ASIC */
+static const struct chip_params jkr_params = {
+	.chip_type = CHIP_JKR,
+	.num_ports = 2,
+};
+
 /*
  * Number of user receive contexts we are configured to use (to allow for more
  * pio buffers per ctxt, etc.)  Zero means use one user context per CPU.
@@ -1573,6 +1579,9 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	    (ent->device == PCI_DEVICE_ID_INTEL0 ||
 	      ent->device == PCI_DEVICE_ID_INTEL1)) {
 		params = &wfr_params;
+	} else if (ent->vendor == PCI_VENDOR_ID_CORNELIS &&
+		   ent->device == PCI_DEVICE_ID_CORNELIS1) {
+		params = &jkr_params;
 	} else {
 		dev_err(&pdev->dev, "Failing on unknown device %04x:%04x\n",
 			ent->vendor, ent->device);
