@@ -3945,7 +3945,7 @@ static int __subn_get_opa_led_info(struct opa_smp *smp, u32 am, u8 *data,
 				   u32 *resp_len, u32 max_len)
 {
 	struct hfi1_devdata *dd = dd_from_ibdev(ibdev);
-	struct hfi1_pportdata *ppd = dd->pport;
+	struct hfi1_pportdata *ppd = &dd->pport[port - 1];
 	struct opa_led_info *p = (struct opa_led_info *)data;
 	u32 nport = OPA_AM_NPORT(am);
 	u32 is_beaconing_active;
@@ -3975,6 +3975,7 @@ static int __subn_set_opa_led_info(struct opa_smp *smp, u32 am, u8 *data,
 				   u32 *resp_len, u32 max_len)
 {
 	struct hfi1_devdata *dd = dd_from_ibdev(ibdev);
+	struct hfi1_pportdata *ppd = &dd->pport[port - 1];
 	struct opa_led_info *p = (struct opa_led_info *)data;
 	u32 nport = OPA_AM_NPORT(am);
 	int on = !!(be32_to_cpu(p->rsvd_led_mask) & OPA_LED_MASK);
@@ -3985,9 +3986,9 @@ static int __subn_set_opa_led_info(struct opa_smp *smp, u32 am, u8 *data,
 	}
 
 	if (on)
-		hfi1_start_led_override(dd->pport, 2000, 1500);
+		hfi1_start_led_override(ppd, 2000, 1500);
 	else
-		shutdown_led_override(dd->pport);
+		shutdown_led_override(ppd);
 
 	return __subn_get_opa_led_info(smp, am, data, ibdev, port, resp_len,
 				       max_len);

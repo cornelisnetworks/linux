@@ -14006,8 +14006,9 @@ static int init_chip(struct hfi1_devdata *dd)
 	/* clear the DC reset */
 	write_csr(dd, CCE_DC_CTRL, 0);
 
-	/* Set the LED off */
-	setextled(dd, 0);
+	/* Turn off LEDs */
+	for (i = 0; i < dd->num_pports; i++)
+		setextled(&dd->pport[i], 0);
 
 	/*
 	 * Clear the QSFP reset.

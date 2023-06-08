@@ -1329,8 +1329,8 @@ retry:
 	/* clear the DC reset */
 	write_csr(dd, CCE_DC_CTRL, 0);
 
-	/* Set the LED off */
-	setextled(dd, 0);
+	/* Set the LED off (only 1 port for WFR) */
+	setextled(&dd->pport[0], 0);
 
 	/* check for any per-lane errors */
 	ret = pci_read_config_dword(dd->pcidev, PCIE_CFG_SPCIE2, &reg32);

@@ -2392,14 +2392,7 @@ static inline void hfi1_reset_cpu_counters(struct hfi1_devdata *dd)
 	}
 }
 
-/* Control LED state */
-static inline void setextled(struct hfi1_devdata *dd, u32 on)
-{
-	if (on)
-		write_csr(dd, DCC_CFG_LED_CNTRL, 0x1F);
-	else
-		write_csr(dd, DCC_CFG_LED_CNTRL, 0x10);
-}
+void setextled(struct hfi1_pportdata *ppd, u32 on);
 
 /* return the i2c resource given the target */
 static inline u32 i2c_target(u32 target)

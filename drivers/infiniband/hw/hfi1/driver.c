@@ -1292,6 +1292,15 @@ int hfi1_set_lid(struct hfi1_pportdata *ppd, u32 lid, u8 lmc)
 	return 0;
 }
 
+/* Control LED state */
+void setextled(struct hfi1_pportdata *ppd, u32 on)
+{
+	if (on)
+		write_csr(ppd->dd, DCC_CFG_LED_CNTRL, 0x1F);
+	else
+		write_csr(ppd->dd, DCC_CFG_LED_CNTRL, 0x10);
+}
+
 void shutdown_led_override(struct hfi1_pportdata *ppd)
 {
 	struct hfi1_devdata *dd = ppd->dd;
@@ -1325,7 +1334,7 @@ static void run_led_override(struct timer_list *t)
 
 	phase_idx = ppd->led_override_phase & 1;
 
-	setextled(dd, phase_idx);
+	setextled(ppd, phase_idx);
 
 	timeout = ppd->led_override_vals[phase_idx];
 
