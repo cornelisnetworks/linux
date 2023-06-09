@@ -762,7 +762,6 @@ int open_fill_data_vls(struct hfi1_devdata *dd);
 u32 ns_to_cclock(struct hfi1_devdata *dd, u32 ns);
 u32 cclock_to_ns(struct hfi1_devdata *dd, u32 cclock);
 void get_linkup_link_widths(struct hfi1_pportdata *ppd);
-void read_ltp_rtt(struct hfi1_devdata *dd);
 void clear_linkup_counters(struct hfi1_devdata *dd);
 u32 hdrqempty(struct hfi1_ctxtdata *rcd);
 int is_ax(struct hfi1_devdata *dd);

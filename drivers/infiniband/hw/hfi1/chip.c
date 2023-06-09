@@ -6868,6 +6868,18 @@ static void update_xmit_counters(struct hfi1_pportdata *ppd, u16 link_width)
 		get_xmit_wait_counters(ppd, tx_width, link_speed, i);
 }
 
+static void read_ltp_rtt(struct hfi1_pportdata *ppd)
+{
+	u64 reg;
+
+	if (read_lcb_csr(ppd->dd, DC_LCB_STS_ROUND_TRIP_LTP_CNT, &reg)) {
+		dd_dev_err(ppd->dd, "%s: unable to read LTP RTT\n", __func__);
+		ppd->link_ltp_rtt = 0;
+	} else {
+		ppd->link_ltp_rtt = reg;
+	}
+}
+
 /*
  * Handle a link up interrupt from the 8051.
  *
@@ -6882,7 +6894,7 @@ void handle_link_up(struct work_struct *work)
 	set_link_state(ppd, HLS_UP_INIT);
 
 	/* cache the read of DC_LCB_STS_ROUND_TRIP_LTP_CNT */
-	read_ltp_rtt(dd);
+	read_ltp_rtt(ppd);
 	/*
 	 * OPA specifies that certain counters are cleared on a transition
 	 * to link up, so do that.

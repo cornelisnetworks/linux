@@ -804,6 +804,7 @@ struct hfi1_pportdata {
 	u16 link_width_downgrade_tx_active;
 	u16 link_width_downgrade_rx_active;
 	u16 link_speed_active;
+	u16 link_ltp_rtt;
 	u8 vls_supported;
 	u8 vls_operational;
 	u8 actual_vls_operational;

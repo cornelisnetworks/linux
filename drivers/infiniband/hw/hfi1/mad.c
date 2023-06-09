@@ -698,59 +698,6 @@ static int check_mkey(struct hfi1_ibport *ibp, struct ib_mad_hdr *mad,
 	return ret;
 }
 
-/*
- * The SMA caches reads from LCB registers in case the LCB is unavailable.
- * (The LCB is unavailable in certain link states, for example.)
- */
-struct lcb_datum {
-	u32 off;
-	u64 val;
-};
-
-static struct lcb_datum lcb_cache[] = {
-	{ DC_LCB_STS_ROUND_TRIP_LTP_CNT, 0 },
-};
-
-static int write_lcb_cache(u32 off, u64 val)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(lcb_cache); i++) {
-		if (lcb_cache[i].off == off) {
-			lcb_cache[i].val = val;
-			return 0;
-		}
-	}
-
-	pr_warn("%s bad offset 0x%x\n", __func__, off);
-	return -1;
-}
-
-static int read_lcb_cache(u32 off, u64 *val)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(lcb_cache); i++) {
-		if (lcb_cache[i].off == off) {
-			*val = lcb_cache[i].val;
-			return 0;
-		}
-	}
-
-	pr_warn("%s bad offset 0x%x\n", __func__, off);
-	return -1;
-}
-
-void read_ltp_rtt(struct hfi1_devdata *dd)
-{
-	u64 reg;
-
-	if (read_lcb_csr(dd, DC_LCB_STS_ROUND_TRIP_LTP_CNT, &reg))
-		dd_dev_err(dd, "%s: unable to read LTP RTT\n", __func__);
-	else
-		write_lcb_cache(DC_LCB_STS_ROUND_TRIP_LTP_CNT, reg);
-}
-
 static int __subn_get_opa_portinfo(struct opa_smp *smp, u32 am, u8 *data,
 				   struct ib_device *ibdev, u32 port,
 				   u32 *resp_len, u32 max_len)
@@ -944,8 +891,8 @@ static int __subn_get_opa_portinfo(struct opa_smp *smp, u32 am, u8 *data,
 
 	/* HFI supports a replay buffer 128 LTPs in size */
 	pi->replay_depth.buffer = 0x80;
-	/* read the cached value of DC_LCB_STS_ROUND_TRIP_LTP_CNT */
-	read_lcb_cache(DC_LCB_STS_ROUND_TRIP_LTP_CNT, &tmp);
+	/* use the cached round trip count */
+	tmp = ppd->link_ltp_rtt;
 
 	/*
 	 * this counter is 16 bits wide, but the replay_depth.wire
