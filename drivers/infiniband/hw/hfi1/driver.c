@@ -1421,7 +1421,7 @@ int hfi1_reset_device(int unit)
 	for (pidx = 0; pidx < dd->num_pports; ++pidx) {
 		ppd = dd->pport + pidx;
 
-		shutdown_led_override(ppd);
+		dd->params->shutdown_led_override(ppd);
 	}
 	if (dd->flags & HFI1_HAS_SEND_DMA)
 		sdma_exit(dd);

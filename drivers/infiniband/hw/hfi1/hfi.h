@@ -1029,6 +1029,11 @@ enum {
 struct chip_params {
 	int chip_type;
 	int num_ports;
+	void (*setextled)(struct hfi1_pportdata *ppd, u32 on);
+	void (*start_led_override)(struct hfi1_pportdata *ppd,
+				   unsigned int timeon,
+				   unsigned int timeoff);
+	void (*shutdown_led_override)(struct hfi1_pportdata *ppd);
 };
 
 typedef int (*send_routine)(struct rvt_qp *, struct hfi1_pkt_state *, u64);

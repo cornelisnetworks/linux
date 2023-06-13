@@ -45,6 +45,9 @@
 static const struct chip_params wfr_params = {
 	.chip_type = CHIP_WFR,
 	.num_ports = 1,
+	.setextled = setextled,
+	.start_led_override = hfi1_start_led_override,
+	.shutdown_led_override = shutdown_led_override,
 };
 
 /* parameters for the JKR ASIC */
@@ -1071,7 +1074,7 @@ static void shutdown_device(struct hfi1_devdata *dd)
 		for (i = 0; i < dd->num_pports; i++)
 			pio_send_control(&dd->pport[i], PSC_GLOBAL_DISABLE);
 
-		shutdown_led_override(ppd);
+		dd->params->shutdown_led_override(ppd);
 
 		/*
 		 * Clear SerdesEnable.

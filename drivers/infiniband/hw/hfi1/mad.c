@@ -3986,9 +3986,9 @@ static int __subn_set_opa_led_info(struct opa_smp *smp, u32 am, u8 *data,
 	}
 
 	if (on)
-		hfi1_start_led_override(ppd, 2000, 1500);
+		dd->params->start_led_override(ppd, 2000, 1500);
 	else
-		shutdown_led_override(ppd);
+		dd->params->shutdown_led_override(ppd);
 
 	return __subn_get_opa_led_info(smp, am, data, ibdev, port, resp_len,
 				       max_len);
