@@ -73,6 +73,9 @@ static const struct chip_params wfr_params = {
 static const struct chip_params jkr_params = {
 	.chip_type = CHIP_JKR,
 	.num_ports = 2,
+	.setextled = gen_setextled,
+	.start_led_override = gen_start_led_override,
+	.shutdown_led_override = gen_shutdown_led_override,
 };
 
 /*
