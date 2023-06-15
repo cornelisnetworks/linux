@@ -14929,6 +14929,20 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 		goto bail;
 	sdma_engines = chip_sdma_engines(dd);
 
+	if (num_vls < HFI1_MIN_VLS_SUPPORTED ||
+	    num_vls > HFI1_MAX_VLS_SUPPORTED) {
+		dd_dev_err(dd, "Invalid num_vls %u, using %u VLs\n",
+			   num_vls, HFI1_MAX_VLS_SUPPORTED);
+		num_vls = HFI1_MAX_VLS_SUPPORTED;
+	}
+
+	/* insure num_vls isn't larger than number of sdma engines */
+	if (HFI1_CAP_IS_KSET(SDMA) && num_vls > sdma_engines) {
+		dd_dev_err(dd, "num_vls %u too large, using %u VLs\n",
+			   num_vls, sdma_engines);
+		num_vls = sdma_engines;
+	}
+
 	ppd = dd->pport;
 	for (i = 0; i < dd->num_pports; i++, ppd++) {
 		int vl;
@@ -14947,12 +14961,6 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 		/* link width active is 0 when link is down */
 		/* link width downgrade active is 0 when link is down */
 
-		if (num_vls < HFI1_MIN_VLS_SUPPORTED ||
-		    num_vls > HFI1_MAX_VLS_SUPPORTED) {
-			dd_dev_err(dd, "Invalid num_vls %u, using %u VLs\n",
-				   num_vls, HFI1_MAX_VLS_SUPPORTED);
-			num_vls = HFI1_MAX_VLS_SUPPORTED;
-		}
 		ppd->vls_supported = num_vls;
 		ppd->vls_operational = ppd->vls_supported;
 		/* Set the default MTU. */
@@ -14973,6 +14981,13 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 		/* start in offline */
 		ppd->host_link_state = HLS_DN_OFFLINE;
 		init_vl_arb_caches(ppd);
+
+		/* speeds the hardware can support */
+		ppd->link_speed_supported = OPA_LINK_SPEED_25G;
+		/* speeds allowed to run at */
+		ppd->link_speed_enabled = ppd->link_speed_supported;
+		/* give a reasonable active value, will be set on link up */
+		ppd->link_speed_active = OPA_LINK_SPEED_25G;
 	}
 
 	/* Save PCI space registers to rewrite after device reset */
@@ -15009,22 +15024,6 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 	dd_dev_info(dd, "Implementation: %s, revision 0x%x\n",
 		    dd->icode < ARRAY_SIZE(inames) ?
 		    inames[dd->icode] : "unknown", (int)dd->irev);
-
-	/* speeds the hardware can support */
-	dd->pport->link_speed_supported = OPA_LINK_SPEED_25G;
-	/* speeds allowed to run at */
-	dd->pport->link_speed_enabled = dd->pport->link_speed_supported;
-	/* give a reasonable active value, will be set on link up */
-	dd->pport->link_speed_active = OPA_LINK_SPEED_25G;
-
-	/* insure num_vls isn't larger than number of sdma engines */
-	if (HFI1_CAP_IS_KSET(SDMA) && num_vls > sdma_engines) {
-		dd_dev_err(dd, "num_vls %u too large, using %u VLs\n",
-			   num_vls, sdma_engines);
-		num_vls = sdma_engines;
-		ppd->vls_supported = sdma_engines;
-		ppd->vls_operational = ppd->vls_supported;
-	}
 
 	/*
 	 * Convert the ns parameter to the 64 * cclocks used in the CSR.
