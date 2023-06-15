@@ -551,7 +551,6 @@ enum {
 
 /* cclock tick time, in picoseconds per tick: 1/speed * 10^12  */
 #define ASIC_CCLOCK_PS  1242	/* 805 MHz */
-#define FPGA_CCLOCK_PS 30300	/*  33 MHz */
 
 /*
  * Mask of enabled MISC errors.  Do not enable the two RSA engine errors -

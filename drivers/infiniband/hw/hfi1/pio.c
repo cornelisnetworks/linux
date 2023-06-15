@@ -1196,7 +1196,7 @@ static int pio_init_wait_progress(struct hfi1_devdata *dd)
 	int max, count = 0;
 
 	/* max is the longest possible HW init time / delay */
-	max = (dd->icode == ICODE_FPGA_EMULATION) ? 120 : 5;
+	max = 5;
 	while (1) {
 		reg = read_csr(dd, SEND_PIO_INIT_CTXT);
 		if (!(reg & SEND_PIO_INIT_CTXT_PIO_INIT_IN_PROGRESS_SMASK))

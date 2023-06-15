@@ -97,12 +97,6 @@ struct flag_table {
 /* Bit offset into the GUID which carries HFI id information */
 #define GUID_HFI_INDEX_SHIFT     39
 
-/* extract the emulation revision */
-#define emulator_rev(dd) ((dd)->irev >> 8)
-/* parallel and serial emulation versions are 3 and 4 respectively */
-#define is_emulator_p(dd) ((((dd)->irev) & 0xf) == 3)
-#define is_emulator_s(dd) ((((dd)->irev) & 0xf) == 4)
-
 /* RSM fields for Verbs */
 /* packet type */
 #define IB_PACKET_TYPE         2ull
@@ -6565,91 +6559,6 @@ static void dc_start(struct hfi1_devdata *dd)
 }
 
 /*
- * These LCB adjustments are for the Aurora SerDes core in the FPGA.
- */
-static void adjust_lcb_for_fpga_serdes(struct hfi1_devdata *dd)
-{
-	u64 rx_radr, tx_radr;
-	u32 version;
-
-	if (dd->icode != ICODE_FPGA_EMULATION)
-		return;
-
-	/*
-	 * These LCB defaults on emulator _s are good, nothing to do here:
-	 *	LCB_CFG_TX_FIFOS_RADR
-	 *	LCB_CFG_RX_FIFOS_RADR
-	 *	LCB_CFG_LN_DCLK
-	 *	LCB_CFG_IGNORE_LOST_RCLK
-	 */
-	if (is_emulator_s(dd))
-		return;
-	/* else this is _p */
-
-	version = emulator_rev(dd);
-	if (!is_ax(dd))
-		version = 0x2d;	/* all B0 use 0x2d or higher settings */
-
-	if (version <= 0x12) {
-		/* release 0x12 and below */
-
-		/*
-		 * LCB_CFG_RX_FIFOS_RADR.RST_VAL = 0x9
-		 * LCB_CFG_RX_FIFOS_RADR.OK_TO_JUMP_VAL = 0x9
-		 * LCB_CFG_RX_FIFOS_RADR.DO_NOT_JUMP_VAL = 0xa
-		 */
-		rx_radr =
-		      0xaull << DC_LCB_CFG_RX_FIFOS_RADR_DO_NOT_JUMP_VAL_SHIFT
-		    | 0x9ull << DC_LCB_CFG_RX_FIFOS_RADR_OK_TO_JUMP_VAL_SHIFT
-		    | 0x9ull << DC_LCB_CFG_RX_FIFOS_RADR_RST_VAL_SHIFT;
-		/*
-		 * LCB_CFG_TX_FIFOS_RADR.ON_REINIT = 0 (default)
-		 * LCB_CFG_TX_FIFOS_RADR.RST_VAL = 6
-		 */
-		tx_radr = 6ull << DC_LCB_CFG_TX_FIFOS_RADR_RST_VAL_SHIFT;
-	} else if (version <= 0x18) {
-		/* release 0x13 up to 0x18 */
-		/* LCB_CFG_RX_FIFOS_RADR = 0x988 */
-		rx_radr =
-		      0x9ull << DC_LCB_CFG_RX_FIFOS_RADR_DO_NOT_JUMP_VAL_SHIFT
-		    | 0x8ull << DC_LCB_CFG_RX_FIFOS_RADR_OK_TO_JUMP_VAL_SHIFT
-		    | 0x8ull << DC_LCB_CFG_RX_FIFOS_RADR_RST_VAL_SHIFT;
-		tx_radr = 7ull << DC_LCB_CFG_TX_FIFOS_RADR_RST_VAL_SHIFT;
-	} else if (version == 0x19) {
-		/* release 0x19 */
-		/* LCB_CFG_RX_FIFOS_RADR = 0xa99 */
-		rx_radr =
-		      0xAull << DC_LCB_CFG_RX_FIFOS_RADR_DO_NOT_JUMP_VAL_SHIFT
-		    | 0x9ull << DC_LCB_CFG_RX_FIFOS_RADR_OK_TO_JUMP_VAL_SHIFT
-		    | 0x9ull << DC_LCB_CFG_RX_FIFOS_RADR_RST_VAL_SHIFT;
-		tx_radr = 3ull << DC_LCB_CFG_TX_FIFOS_RADR_RST_VAL_SHIFT;
-	} else if (version == 0x1a) {
-		/* release 0x1a */
-		/* LCB_CFG_RX_FIFOS_RADR = 0x988 */
-		rx_radr =
-		      0x9ull << DC_LCB_CFG_RX_FIFOS_RADR_DO_NOT_JUMP_VAL_SHIFT
-		    | 0x8ull << DC_LCB_CFG_RX_FIFOS_RADR_OK_TO_JUMP_VAL_SHIFT
-		    | 0x8ull << DC_LCB_CFG_RX_FIFOS_RADR_RST_VAL_SHIFT;
-		tx_radr = 7ull << DC_LCB_CFG_TX_FIFOS_RADR_RST_VAL_SHIFT;
-		write_csr(dd, DC_LCB_CFG_LN_DCLK, 1ull);
-	} else {
-		/* release 0x1b and higher */
-		/* LCB_CFG_RX_FIFOS_RADR = 0x877 */
-		rx_radr =
-		      0x8ull << DC_LCB_CFG_RX_FIFOS_RADR_DO_NOT_JUMP_VAL_SHIFT
-		    | 0x7ull << DC_LCB_CFG_RX_FIFOS_RADR_OK_TO_JUMP_VAL_SHIFT
-		    | 0x7ull << DC_LCB_CFG_RX_FIFOS_RADR_RST_VAL_SHIFT;
-		tx_radr = 3ull << DC_LCB_CFG_TX_FIFOS_RADR_RST_VAL_SHIFT;
-	}
-
-	write_csr(dd, DC_LCB_CFG_RX_FIFOS_RADR, rx_radr);
-	/* LCB_CFG_IGNORE_LOST_RCLK.EN = 1 */
-	write_csr(dd, DC_LCB_CFG_IGNORE_LOST_RCLK,
-		  DC_LCB_CFG_IGNORE_LOST_RCLK_EN_SMASK);
-	write_csr(dd, DC_LCB_CFG_TX_FIFOS_RADR, tx_radr);
-}
-
-/*
  * Handle a SMA idle message
  *
  * This is a work-queue function outside of the interrupt.
@@ -7442,7 +7351,6 @@ void handle_verify_cap(struct work_struct *work)
 	set_link_state(ppd, HLS_VERIFY_CAP);
 
 	lcb_shutdown(dd, 0);
-	adjust_lcb_for_fpga_serdes(dd);
 
 	read_vc_remote_phy(dd, &power_management, &continuous);
 	read_vc_remote_fabric(dd, &vau, &z, &vcu, &vl15buf,
@@ -9293,13 +9201,6 @@ static int init_loopback(struct hfi1_devdata *dd)
 	/* LCB loopback - handled at poll time */
 	if (loopback == LOOPBACK_LCB) {
 		quick_linkup = 1; /* LCB is always quick linkup */
-
-		/* not supported in emulation due to emulation RTL changes */
-		if (dd->icode == ICODE_FPGA_EMULATION) {
-			dd_dev_err(dd,
-				   "LCB loopback not supported in emulation\n");
-			return -EINVAL;
-		}
 		return 0;
 	}
 
@@ -11767,27 +11668,23 @@ u32 ns_to_cclock(struct hfi1_devdata *dd, u32 ns)
 {
 	u32 cclocks;
 
-	if (dd->icode == ICODE_FPGA_EMULATION)
-		cclocks = (ns * 1000) / FPGA_CCLOCK_PS;
-	else  /* simulation pretends to be ASIC */
-		cclocks = (ns * 1000) / ASIC_CCLOCK_PS;
+	/* simulation pretends to be ASIC */
+	cclocks = (ns * 1000) / ASIC_CCLOCK_PS;
 	if (ns && !cclocks)	/* if ns nonzero, must be at least 1 */
 		cclocks = 1;
 	return cclocks;
 }
 
 /*
- * Convert a cclock count to nanoseconds. Not matter how slow
+ * Convert a cclock count to nanoseconds. No matter how slow
  * the cclock, a non-zero cclocks will always have a non-zero result.
  */
 u32 cclock_to_ns(struct hfi1_devdata *dd, u32 cclocks)
 {
 	u32 ns;
 
-	if (dd->icode == ICODE_FPGA_EMULATION)
-		ns = (cclocks * FPGA_CCLOCK_PS) / 1000;
-	else  /* simulation pretends to be ASIC */
-		ns = (cclocks * ASIC_CCLOCK_PS) / 1000;
+	/* simulation pretends to be ASIC */
+	ns = (cclocks * ASIC_CCLOCK_PS) / 1000;
 	if (cclocks && !ns)
 		ns = 1;
 	return ns;
@@ -15107,15 +15004,6 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 	/* give a reasonable active value, will be set on link up */
 	dd->pport->link_speed_active = OPA_LINK_SPEED_25G;
 
-	/* fix up link widths for emulation _p */
-	ppd = dd->pport;
-	if (dd->icode == ICODE_FPGA_EMULATION && is_emulator_p(dd)) {
-		ppd->link_width_supported =
-			ppd->link_width_enabled =
-			ppd->link_width_downgrade_supported =
-			ppd->link_width_downgrade_enabled =
-				OPA_LINK_WIDTH_1X;
-	}
 	/* insure num_vls isn't larger than number of sdma engines */
 	if (HFI1_CAP_IS_KSET(SDMA) && num_vls > sdma_engines) {
 		dd_dev_err(dd, "num_vls %u too large, using %u VLs\n",
