@@ -14918,7 +14918,16 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 		"Functional simulator"
 	};
 	struct pci_dev *parent = pdev->bus->self;
-	u32 sdma_engines = chip_sdma_engines(dd);
+	u32 sdma_engines;
+
+	/*
+	 * Do remaining PCIe setup.  Error messaging is done by the callee.
+	 * On return, the BAR is mapped and register access is enabled.
+	 */
+	ret = hfi1_pcie_ddinit(dd, pdev);
+	if (ret < 0)
+		goto bail;
+	sdma_engines = chip_sdma_engines(dd);
 
 	ppd = dd->pport;
 	for (i = 0; i < dd->num_pports; i++, ppd++) {
@@ -14965,15 +14974,6 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 		ppd->host_link_state = HLS_DN_OFFLINE;
 		init_vl_arb_caches(ppd);
 	}
-
-	/*
-	 * Do remaining PCIe setup and save PCIe values in dd.
-	 * Any error printing is already done by the init code.
-	 * On return, we have the chip mapped.
-	 */
-	ret = hfi1_pcie_ddinit(dd, pdev);
-	if (ret < 0)
-		goto bail;
 
 	/* Save PCI space registers to rewrite after device reset */
 	ret = save_pci_variables(dd);
