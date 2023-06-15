@@ -12,6 +12,8 @@ hfi1-y := \
 	affinity.o \
 	aspm.o \
 	chip.o \
+	chip_gen.o \
+	chip_jkr.o \
 	device.o \
 	driver.o \
 	efivar.o \

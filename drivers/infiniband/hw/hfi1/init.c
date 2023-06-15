@@ -29,6 +29,8 @@
 #include "vnic.h"
 #include "exp_rcv.h"
 #include "netdev.h"
+#include "chip_jkr.h"
+#include "chip_gen.h"
 
 #undef pr_fmt
 #define pr_fmt(fmt) DRIVER_NAME ": " fmt
