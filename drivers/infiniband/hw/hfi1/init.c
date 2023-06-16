@@ -77,6 +77,15 @@ static const struct chip_params jkr_params = {
 	.send_dma_engines_reg = JKR_SEND_DMA_ENGINES,
 	.send_pio_mem_size_reg = JKR_SEND_PIO_MEM_SIZE,
 	.send_dma_mem_size_reg = JKR_SEND_DMA_MEM_SIZE,
+
+	/* BAR0 map: see comments where KREG values are defined */
+	.bar0_size = JKR_BAR0_SIZE,
+	.kreg1_size = JKR_KREG1_SIZE,
+	.kreg2_offset = JKR_KREG2_OFFSET,
+	.kreg2_size = JKR_KREG2_SIZE,
+	.rcv_array_offset = JKR_RCV_ARRAY,
+	.rcv_array_size = JKR_RCV_ARRAY_SIZE,
+
 	.setextled = gen_setextled,
 	.start_led_override = gen_start_led_override,
 	.shutdown_led_override = gen_shutdown_led_override,
