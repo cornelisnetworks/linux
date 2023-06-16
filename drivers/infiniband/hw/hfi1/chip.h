@@ -26,6 +26,7 @@
 #define TXE_NUM_64_BIT_COUNTER 30
 #define TXE_NUM_DATA_VL 8
 #define TXE_PIO_SIZE (32 * 0x100000)	/* 32 MB */
+#define RCV_ARRAY_SIZE (64 * 1024 * 8)  /* 64K entries of 8 bytes = 512 KB */
 #define PIO_BLOCK_SIZE 64			/* bytes */
 #define SDMA_BLOCK_SIZE 64			/* bytes */
 #define RCV_BUF_BLOCK_SIZE 64               /* bytes */
