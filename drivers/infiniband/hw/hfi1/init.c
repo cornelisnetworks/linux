@@ -51,6 +51,15 @@ static const struct chip_params wfr_params = {
 	.send_dma_engines_reg = SEND_DMA_ENGINES,
 	.send_pio_mem_size_reg = SEND_PIO_MEM_SIZE,
 	.send_dma_mem_size_reg = SEND_DMA_MEM_SIZE,
+
+	/* BAR0 map: rcv array splits kreg1 and kreg2 */
+	.bar0_size = TXE_PIO_SEND + TXE_PIO_SIZE,
+	.kreg1_size = RCV_ARRAY,
+	.kreg2_offset = RCV_ARRAY + RCV_ARRAY_SIZE,
+	.kreg2_size = TXE_PIO_SEND - (RCV_ARRAY + RCV_ARRAY_SIZE),
+	.rcv_array_offset = RCV_ARRAY,
+	.rcv_array_size = RCV_ARRAY_SIZE,
+
 	.setextled = setextled,
 	.start_led_override = hfi1_start_led_override,
 	.shutdown_led_override = shutdown_led_override,

@@ -1033,6 +1033,12 @@ struct chip_params {
 	u32 send_dma_engines_reg;
 	u32 send_pio_mem_size_reg;
 	u32 send_dma_mem_size_reg;
+	u32 bar0_size;
+	u32 kreg1_size;
+	u32 kreg2_offset;
+	u32 kreg2_size;
+	u32 rcv_array_offset;
+	u32 rcv_array_size;
 	void (*setextled)(struct hfi1_pportdata *ppd, u32 on);
 	void (*start_led_override)(struct hfi1_pportdata *ppd,
 				   unsigned int timeon,

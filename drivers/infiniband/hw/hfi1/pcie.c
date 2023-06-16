@@ -94,7 +94,6 @@ int hfi1_pcie_ddinit(struct hfi1_devdata *dd, struct pci_dev *pdev)
 	unsigned long len;
 	resource_size_t addr;
 	int ret = 0;
-	u32 rcv_array_count;
 
 	addr = pci_resource_start(pdev, 0);
 	len = pci_resource_len(pdev, 0);
@@ -105,17 +104,18 @@ int hfi1_pcie_ddinit(struct hfi1_devdata *dd, struct pci_dev *pdev)
 	 */
 
 	/* sanity check vs expectations */
-	if (len != TXE_PIO_SEND + TXE_PIO_SIZE) {
-		dd_dev_err(dd, "chip PIO range does not match\n");
+	if (len != dd->params->bar0_size) {
+		dd_dev_err(dd, "chip BAR0 size does not match\n");
 		return -EINVAL;
 	}
 
-	dd->kregbase1 = ioremap(addr, RCV_ARRAY);
+	dd->kregbase1 = ioremap(addr, dd->params->kreg1_size);
 	if (!dd->kregbase1) {
 		dd_dev_err(dd, "UC mapping of kregbase1 failed\n");
 		return -ENOMEM;
 	}
-	dd_dev_info(dd, "UC base1: %p for %x\n", dd->kregbase1, RCV_ARRAY);
+	dd_dev_info(dd, "UC base1: %p for %x\n", dd->kregbase1,
+		    dd->params->kreg1_size);
 
 	/* verify that reads actually work, save revision for reset check */
 	dd->revision = readq(dd->kregbase1 + CCE_REVISION);
@@ -124,19 +124,16 @@ int hfi1_pcie_ddinit(struct hfi1_devdata *dd, struct pci_dev *pdev)
 		goto nomem;
 	}
 
-	rcv_array_count = readq(dd->kregbase1 + RCV_ARRAY_CNT);
-	dd_dev_info(dd, "RcvArray count: %u\n", rcv_array_count);
-	dd->base2_start  = RCV_ARRAY + rcv_array_count * 8;
+	dd->base2_start = dd->params->kreg2_offset;
 
-	dd->kregbase2 = ioremap(
-		addr + dd->base2_start,
-		TXE_PIO_SEND - dd->base2_start);
+	dd->kregbase2 = ioremap(addr + dd->base2_start,
+				dd->params->kreg2_size);
 	if (!dd->kregbase2) {
 		dd_dev_err(dd, "UC mapping of kregbase2 failed\n");
 		goto nomem;
 	}
 	dd_dev_info(dd, "UC base2: %p for %x\n", dd->kregbase2,
-		    TXE_PIO_SEND - dd->base2_start);
+		    dd->params->kreg2_size);
 
 	dd->piobase = ioremap_wc(addr + TXE_PIO_SEND, TXE_PIO_SIZE);
 	if (!dd->piobase) {
@@ -151,14 +148,14 @@ int hfi1_pcie_ddinit(struct hfi1_devdata *dd, struct pci_dev *pdev)
 	 * Map the chip's RcvArray as write-combining to allow us
 	 * to write an entire cacheline worth of entries in one shot.
 	 */
-	dd->rcvarray_wc = ioremap_wc(addr + RCV_ARRAY,
-				     rcv_array_count * 8);
+	dd->rcvarray_wc = ioremap_wc(addr + dd->params->rcv_array_offset,
+				     dd->params->rcv_array_size);
 	if (!dd->rcvarray_wc) {
 		dd_dev_err(dd, "WC mapping of receive array failed\n");
 		goto nomem;
 	}
 	dd_dev_info(dd, "WC RcvArray: %p for %x\n",
-		    dd->rcvarray_wc, rcv_array_count * 8);
+		    dd->rcvarray_wc, dd->params->rcv_array_size);
 
 	dd->flags |= HFI1_PRESENT;	/* chip.c CSR routines now work */
 	return 0;
