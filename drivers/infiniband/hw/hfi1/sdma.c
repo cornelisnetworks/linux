@@ -2059,6 +2059,7 @@ static void init_sdma_regs(
 
 void sdma_dumpstate(struct sdma_engine *sde)
 {
+	struct hfi1_devdata *dd = sde->dd;
 	u64 csr;
 	unsigned i;
 
@@ -2083,8 +2084,8 @@ void sdma_dumpstate(struct sdma_engine *sde)
 	sdma_dumpstate_helper(SD(DESC_CNT));
 	sdma_dumpstate_helper(SD(DESC_FETCHED_CNT));
 	sdma_dumpstate_helper(SD(MEMORY));
-	sdma_dumpstate_helper0(SD(ENGINES));
-	sdma_dumpstate_helper0(SD(MEM_SIZE));
+	sdma_dumpstate_helper0(dd->params->send_dma_engines_reg);
+	sdma_dumpstate_helper0(dd->params->send_dma_mem_size_reg);
 	/* sdma_dumpstate_helper(SEND_EGRESS_SEND_DMA_STATUS);  */
 	sdma_dumpstate_helper(SD(BASE_ADDR));
 	sdma_dumpstate_helper(SD(LEN_GEN));
