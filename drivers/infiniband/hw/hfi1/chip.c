@@ -14947,7 +14947,7 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 	for (i = 0; i < dd->num_pports; i++, ppd++) {
 		int vl;
 		/* init common fields */
-		hfi1_init_pportdata(pdev, ppd, dd, 0, 1);
+		hfi1_init_pportdata(pdev, ppd, dd, i, i + 1);
 		/* DC supports 4 link widths */
 		ppd->link_width_supported =
 			OPA_LINK_WIDTH_1X | OPA_LINK_WIDTH_2X |
