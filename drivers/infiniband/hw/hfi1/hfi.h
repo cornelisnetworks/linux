@@ -1029,6 +1029,10 @@ enum {
 struct chip_params {
 	int chip_type;
 	int num_ports;
+	u32 send_contexts_reg;
+	u32 send_dma_engines_reg;
+	u32 send_pio_mem_size_reg;
+	u32 send_dma_mem_size_reg;
 	void (*setextled)(struct hfi1_pportdata *ppd, u32 on);
 	void (*start_led_override)(struct hfi1_pportdata *ppd,
 				   unsigned int timeon,
@@ -2659,4 +2663,25 @@ static inline void hfi1_make_16b_hdr(struct hfi1_16b_header *hdr,
 	hdr->lrh[2] = lrh2;
 	hdr->lrh[3] = lrh3;
 }
+
+static inline u32 chip_send_contexts(struct hfi1_devdata *dd)
+{
+	return read_csr(dd, dd->params->send_contexts_reg);
+}
+
+static inline u32 chip_sdma_engines(struct hfi1_devdata *dd)
+{
+	return read_csr(dd, dd->params->send_dma_engines_reg);
+}
+
+static inline u32 chip_pio_mem_size(struct hfi1_devdata *dd)
+{
+	return read_csr(dd, dd->params->send_pio_mem_size_reg);
+}
+
+static inline u32 chip_sdma_mem_size(struct hfi1_devdata *dd)
+{
+	return read_csr(dd, dd->params->send_dma_mem_size_reg);
+}
+
 #endif                          /* _HFI1_KERNEL_H */

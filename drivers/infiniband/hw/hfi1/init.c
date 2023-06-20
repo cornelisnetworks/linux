@@ -47,6 +47,10 @@
 static const struct chip_params wfr_params = {
 	.chip_type = CHIP_WFR,
 	.num_ports = 1,
+	.send_contexts_reg = SEND_CONTEXTS,
+	.send_dma_engines_reg = SEND_DMA_ENGINES,
+	.send_pio_mem_size_reg = SEND_PIO_MEM_SIZE,
+	.send_dma_mem_size_reg = SEND_DMA_MEM_SIZE,
 	.setextled = setextled,
 	.start_led_override = hfi1_start_led_override,
 	.shutdown_led_override = shutdown_led_override,
