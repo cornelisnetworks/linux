@@ -11682,7 +11682,7 @@ u32 ns_to_cclock(struct hfi1_devdata *dd, u32 ns)
 	u32 cclocks;
 
 	/* simulation pretends to be ASIC */
-	cclocks = (ns * 1000) / ASIC_CCLOCK_PS;
+	cclocks = (ns * 1000) / dd->params->asic_cclock_ps;
 	if (ns && !cclocks)	/* if ns nonzero, must be at least 1 */
 		cclocks = 1;
 	return cclocks;
@@ -11697,7 +11697,7 @@ u32 cclock_to_ns(struct hfi1_devdata *dd, u32 cclocks)
 	u32 ns;
 
 	/* simulation pretends to be ASIC */
-	ns = (cclocks * ASIC_CCLOCK_PS) / 1000;
+	ns = (cclocks * dd->params->asic_cclock_ps) / 1000;
 	if (cclocks && !ns)
 		ns = 1;
 	return ns;
