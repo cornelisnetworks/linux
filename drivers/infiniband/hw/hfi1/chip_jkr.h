@@ -24,4 +24,7 @@
 
 #define JKR_RCV_ARRAY_SIZE (64 * 1024 * 1024)	/* 64 MB */
 
+/* cclock tick time, in picoseconds per tick: 1/speed * 10^12  */
+#define JKR_ASIC_CCLOCK_PS 602	/* 1660.15625 MHz */
+
 #endif /* _CHIP_JKR_H */
