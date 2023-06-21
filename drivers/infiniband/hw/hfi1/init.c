@@ -86,6 +86,9 @@ static const struct chip_params jkr_params = {
 	.rcv_array_offset = JKR_RCV_ARRAY,
 	.rcv_array_size = JKR_RCV_ARRAY_SIZE,
 
+	.link_speed_supported = OPA_LINK_SPEED_100G | OPA_LINK_SPEED_25G,
+	.link_speed_active = OPA_LINK_SPEED_100G,
+
 	.setextled = gen_setextled,
 	.start_led_override = gen_start_led_override,
 	.shutdown_led_override = gen_shutdown_led_override,
