@@ -1039,6 +1039,8 @@ struct chip_params {
 	u32 kreg2_size;
 	u32 rcv_array_offset;
 	u32 rcv_array_size;
+	u32 link_speed_supported;
+	u32 link_speed_active;
 	void (*setextled)(struct hfi1_pportdata *ppd, u32 on);
 	void (*start_led_override)(struct hfi1_pportdata *ppd,
 				   unsigned int timeon,

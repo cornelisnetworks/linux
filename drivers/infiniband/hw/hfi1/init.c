@@ -60,6 +60,9 @@ static const struct chip_params wfr_params = {
 	.rcv_array_offset = RCV_ARRAY,
 	.rcv_array_size = RCV_ARRAY_SIZE,
 
+	.link_speed_supported = OPA_LINK_SPEED_25G,
+	.link_speed_active = OPA_LINK_SPEED_25G,
+
 	.setextled = setextled,
 	.start_led_override = hfi1_start_led_override,
 	.shutdown_led_override = shutdown_led_override,
