@@ -62,6 +62,7 @@ static const struct chip_params wfr_params = {
 
 	.link_speed_supported = OPA_LINK_SPEED_25G,
 	.link_speed_active = OPA_LINK_SPEED_25G,
+	.asic_cclock_ps = ASIC_CCLOCK_PS,
 
 	.setextled = setextled,
 	.start_led_override = hfi1_start_led_override,
