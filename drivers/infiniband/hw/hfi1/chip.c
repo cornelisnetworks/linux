@@ -14985,11 +14985,11 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 		init_vl_arb_caches(ppd);
 
 		/* speeds the hardware can support */
-		ppd->link_speed_supported = OPA_LINK_SPEED_25G;
+		ppd->link_speed_supported = dd->params->link_speed_supported;
 		/* speeds allowed to run at */
 		ppd->link_speed_enabled = ppd->link_speed_supported;
 		/* give a reasonable active value, will be set on link up */
-		ppd->link_speed_active = OPA_LINK_SPEED_25G;
+		ppd->link_speed_active = dd->params->link_speed_active;
 	}
 
 	/* Save PCI space registers to rewrite after device reset */
