@@ -88,6 +88,7 @@ static const struct chip_params jkr_params = {
 
 	.link_speed_supported = OPA_LINK_SPEED_100G | OPA_LINK_SPEED_25G,
 	.link_speed_active = OPA_LINK_SPEED_100G,
+	.asic_cclock_ps = JKR_ASIC_CCLOCK_PS,
 
 	.setextled = gen_setextled,
 	.start_led_override = gen_start_led_override,
