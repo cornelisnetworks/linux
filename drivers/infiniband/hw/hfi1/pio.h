@@ -55,7 +55,8 @@ union pio_shadow_ring {
 /* per-NUMA send context */
 struct send_context {
 	/* read-only after init */
-	struct hfi1_devdata *dd;		/* device */
+	struct hfi1_devdata *dd;	/* device */
+	struct hfi1_pportdata *ppd;	/* port */
 	union pio_shadow_ring *sr;	/* shadow ring */
 	void __iomem *base_addr;	/* start of PIO memory */
 	u32 __percpu *buffers_allocated;/* count of buffers allocated */
@@ -237,8 +238,8 @@ int init_credit_return(struct hfi1_devdata *dd);
 void free_credit_return(struct hfi1_devdata *dd);
 int init_sc_pools_and_sizes(struct hfi1_devdata *dd);
 int init_send_contexts(struct hfi1_devdata *dd);
-int init_pervl_scs(struct hfi1_devdata *dd);
-struct send_context *sc_alloc(struct hfi1_devdata *dd, int type,
+int init_pervl_scs(struct hfi1_pportdata *ppd);
+struct send_context *sc_alloc(struct hfi1_pportdata *ppd, int type,
 			      uint hdrqentsize, int numa);
 void sc_free(struct send_context *sc);
 int sc_enable(struct send_context *sc);

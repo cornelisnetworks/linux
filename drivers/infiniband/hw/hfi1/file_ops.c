@@ -58,7 +58,7 @@ static int setup_subctxt(struct hfi1_ctxtdata *uctxt);
 
 static int find_sub_ctxt(struct hfi1_filedata *fd,
 			 const struct hfi1_user_info *uinfo);
-static int allocate_ctxt(struct hfi1_filedata *fd, struct hfi1_devdata *dd,
+static int allocate_ctxt(struct hfi1_filedata *fd,
 			 struct hfi1_user_info *uinfo,
 			 struct hfi1_ctxtdata **cd);
 static void deallocate_ctxt(struct hfi1_ctxtdata *uctxt);
@@ -167,6 +167,8 @@ static int hfi1_file_open(struct inode *inode, struct file *fp)
 	spin_lock_init(&fd->invalid_lock);
 	fd->rec_cpu_num = -1; /* no cpu affinity by default */
 	fd->dd = dd;
+	/* hard-code port 0, this will change with cdev replacement */
+	fd->ppd = dd->pport;
 	fp->private_data = fd;
 	return 0;
 nomem:
@@ -811,7 +813,7 @@ static int assign_ctxt(struct hfi1_filedata *fd, unsigned long arg, u32 len)
 	 * sub context wasn't found.
 	 */
 	if (!ret)
-		ret = allocate_ctxt(fd, fd->dd, &uinfo, &uctxt);
+		ret = allocate_ctxt(fd, &uinfo, &uctxt);
 
 	mutex_unlock(&hfi1_mutex);
 
@@ -928,10 +930,12 @@ static int find_sub_ctxt(struct hfi1_filedata *fd,
 	return 0;
 }
 
-static int allocate_ctxt(struct hfi1_filedata *fd, struct hfi1_devdata *dd,
+static int allocate_ctxt(struct hfi1_filedata *fd,
 			 struct hfi1_user_info *uinfo,
 			 struct hfi1_ctxtdata **rcd)
 {
+	struct hfi1_devdata *dd = fd->dd;
+	struct hfi1_pportdata *ppd = fd->ppd;
 	struct hfi1_ctxtdata *uctxt;
 	int ret, numa;
 
@@ -958,7 +962,7 @@ static int allocate_ctxt(struct hfi1_filedata *fd, struct hfi1_devdata *dd,
 		numa = cpu_to_node(fd->rec_cpu_num);
 	else
 		numa = numa_node_id();
-	ret = hfi1_create_ctxtdata(dd->pport, numa, &uctxt);
+	ret = hfi1_create_ctxtdata(ppd, numa, &uctxt);
 	if (ret < 0) {
 		dd_dev_err(dd, "user ctxtdata allocation failed\n");
 		return ret;
@@ -970,7 +974,7 @@ static int allocate_ctxt(struct hfi1_filedata *fd, struct hfi1_devdata *dd,
 	/*
 	 * Allocate and enable a PIO send context.
 	 */
-	uctxt->sc = sc_alloc(dd, SC_USER, uctxt->rcvhdrqentsize, dd->node);
+	uctxt->sc = sc_alloc(ppd, SC_USER, uctxt->rcvhdrqentsize, dd->node);
 	if (!uctxt->sc) {
 		ret = -ENOMEM;
 		goto ctxdata_free;

@@ -126,7 +126,7 @@ static int hfi1_create_kctxt(struct hfi1_devdata *dd,
 
 	hfi1_set_seq_cnt(rcd, 1);
 
-	rcd->sc = sc_alloc(dd, SC_ACK, rcd->rcvhdrqentsize, dd->node);
+	rcd->sc = sc_alloc(ppd, SC_ACK, rcd->rcvhdrqentsize, dd->node);
 	if (!rcd->sc) {
 		dd_dev_err(dd, "Kernel send context allocation failed\n");
 		return -ENOMEM;

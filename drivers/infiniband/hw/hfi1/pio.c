@@ -651,9 +651,10 @@ static void reset_buffers_allocated(struct send_context *sc)
  * Allocate a NUMA relative send context structure of the given type along
  * with a HW context.
  */
-struct send_context *sc_alloc(struct hfi1_devdata *dd, int type,
+struct send_context *sc_alloc(struct hfi1_pportdata *ppd, int type,
 			      uint hdrqentsize, int numa)
 {
+	struct hfi1_devdata *dd = ppd->dd;
 	struct send_context_info *sci;
 	struct send_context *sc = NULL;
 	dma_addr_t dma;
@@ -695,6 +696,7 @@ struct send_context *sc_alloc(struct hfi1_devdata *dd, int type,
 	sci->sc = sc;
 
 	sc->dd = dd;
+	sc->ppd = ppd;
 	sc->node = numa;
 	sc->type = type;
 	spin_lock_init(&sc->alloc_lock);
@@ -1968,15 +1970,15 @@ void free_pio_map(struct hfi1_devdata *dd)
 	dd->kernel_send_context = NULL;
 }
 
-int init_pervl_scs(struct hfi1_devdata *dd)
+int init_pervl_scs(struct hfi1_pportdata *ppd)
 {
+	struct hfi1_devdata *dd = ppd->dd;
 	int i;
 	u64 mask, all_vl_mask = (u64)0x80ff; /* VLs 0-7, 15 */
 	u64 data_vls_mask = (u64)0x00ff; /* VLs 0-7 */
 	u32 ctxt;
-	struct hfi1_pportdata *ppd = dd->pport;
 
-	dd->vld[15].sc = sc_alloc(dd, SC_VL15,
+	dd->vld[15].sc = sc_alloc(ppd, SC_VL15,
 				  dd->rcd[0]->rcvhdrqentsize, dd->node);
 	if (!dd->vld[15].sc)
 		return -ENOMEM;
@@ -2000,7 +2002,7 @@ int init_pervl_scs(struct hfi1_devdata *dd)
 		 * valid at this point and will remain the same for all
 		 * receive contexts.
 		 */
-		dd->vld[i].sc = sc_alloc(dd, SC_KERNEL,
+		dd->vld[i].sc = sc_alloc(ppd, SC_KERNEL,
 					 dd->rcd[0]->rcvhdrqentsize, dd->node);
 		if (!dd->vld[i].sc)
 			goto nomem;
@@ -2011,7 +2013,7 @@ int init_pervl_scs(struct hfi1_devdata *dd)
 	}
 	for (i = num_vls; i < INIT_SC_PER_VL * num_vls; i++) {
 		dd->kernel_send_context[i + 1] =
-		sc_alloc(dd, SC_KERNEL, dd->rcd[0]->rcvhdrqentsize, dd->node);
+		sc_alloc(ppd, SC_KERNEL, dd->rcd[0]->rcvhdrqentsize, dd->node);
 		if (!dd->kernel_send_context[i + 1])
 			goto nomem;
 		hfi1_init_ctxt(dd->kernel_send_context[i + 1]);

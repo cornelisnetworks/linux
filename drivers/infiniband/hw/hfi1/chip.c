@@ -15151,12 +15151,11 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 	 */
 	aspm_init(dd);
 
-	ret = init_pervl_scs(dd);
-	if (ret)
-		goto bail_cleanup;
-
-	/* sdma init */
+	/* per-vl send context and sdma init */
 	for (i = 0; i < dd->num_pports; ++i) {
+		ret = init_pervl_scs(dd->pport + i);
+		if (ret)
+			goto bail_cleanup;
 		ret = sdma_init(dd, i);
 		if (ret)
 			goto bail_cleanup;

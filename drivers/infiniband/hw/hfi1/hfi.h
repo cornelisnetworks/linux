@@ -1398,6 +1398,7 @@ struct tid_rb_node;
 struct hfi1_filedata {
 	struct srcu_struct pq_srcu;
 	struct hfi1_devdata *dd;
+	struct hfi1_pportdata *ppd;
 	struct hfi1_ctxtdata *uctxt;
 	struct hfi1_user_sdma_comp_q *cq;
 	/* update side lock for SRCU */
