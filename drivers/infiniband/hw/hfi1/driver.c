@@ -1242,8 +1242,8 @@ int set_mtu(struct hfi1_pportdata *ppd)
 
 	ppd->ibmtu = 0;
 	for (i = 0; i < ppd->vls_supported; i++)
-		if (ppd->ibmtu < dd->vld[i].mtu)
-			ppd->ibmtu = dd->vld[i].mtu;
+		if (ppd->ibmtu < ppd->vld[i].mtu)
+			ppd->ibmtu = ppd->vld[i].mtu;
 	ppd->ibmaxlen = ppd->ibmtu + lrh_max_header_bytes(ppd->dd);
 
 	mutex_lock(&ppd->hls_lock);
@@ -1260,7 +1260,7 @@ int set_mtu(struct hfi1_pportdata *ppd)
 		 * stuck (due, e.g., to the MTU for the packet's VL being
 		 * reduced), empty the per-VL FIFOs before adjusting MTU.
 		 */
-		ret = stop_drain_data_vls(dd);
+		ret = stop_drain_data_vls(ppd);
 
 	if (ret) {
 		dd_dev_err(dd, "%s: cannot stop/drain VLs - refusing to change per-VL MTUs\n",
@@ -1271,7 +1271,7 @@ int set_mtu(struct hfi1_pportdata *ppd)
 	hfi1_set_ib_cfg(ppd, HFI1_IB_CFG_MTU, 0);
 
 	if (drain)
-		open_fill_data_vls(dd); /* reopen all VLs */
+		open_fill_data_vls(ppd); /* reopen all VLs */
 
 err:
 	mutex_unlock(&ppd->hls_lock);

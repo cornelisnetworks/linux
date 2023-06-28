@@ -698,7 +698,8 @@ static int init_after_reset(struct hfi1_devdata *dd)
 			     HFI1_RCVCTRL_TAILUPD_DIS, rcd);
 		hfi1_rcd_put(rcd);
 	}
-	pio_send_control(dd, PSC_GLOBAL_DISABLE);
+	for (i = 0; i < dd->num_pports; i++)
+		pio_send_control(&dd->pport[i], PSC_GLOBAL_DISABLE);
 	for (i = 0; i < dd->num_send_contexts; i++)
 		sc_disable(dd->send_contexts[i].sc);
 
@@ -712,7 +713,8 @@ static void enable_chip(struct hfi1_devdata *dd)
 	u16 i;
 
 	/* enable PIO send */
-	pio_send_control(dd, PSC_GLOBAL_ENABLE);
+	for (i = 0; i < dd->num_pports; i++)
+		pio_send_control(&dd->pport[i], PSC_GLOBAL_ENABLE);
 
 	/*
 	 * Enable kernel ctxts' receive and receive interrupt.
@@ -1066,7 +1068,8 @@ static void shutdown_device(struct hfi1_devdata *dd)
 		for (i = 0; i < dd->num_send_contexts; i++)
 			sc_disable(dd->send_contexts[i].sc);
 		/* disable the send device */
-		pio_send_control(dd, PSC_GLOBAL_DISABLE);
+		for (i = 0; i < dd->num_pports; i++)
+			pio_send_control(&dd->pport[i], PSC_GLOBAL_DISABLE);
 
 		shutdown_led_override(ppd);
 

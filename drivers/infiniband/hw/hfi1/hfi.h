@@ -722,6 +722,14 @@ struct vl_arb_cache {
 	struct ib_vl_weight_elem table[VL_ARB_TABLE_SIZE];
 };
 
+struct per_vl_data {
+	u16 mtu;
+	struct send_context *sc;
+};
+
+/* 16 to directly index */
+#define PER_VL_SEND_CONTEXTS 16
+
 /*
  * The structure below encapsulates data relevant to a physical IB Port.
  * Current chips support only one such port, but the separation
@@ -753,6 +761,9 @@ struct hfi1_pportdata {
 
 	/* GUID for peer interface, in host order */
 	u64 neighbor_guid;
+
+	/* Per VL data. Enough for all VLs but not all elements are set/used. */
+	struct per_vl_data vld[PER_VL_SEND_CONTEXTS];
 
 	/* up or down physical link state */
 	u32 linkup;
@@ -951,14 +962,6 @@ struct rcv_array_data {
 	u8 group_size;
 };
 
-struct per_vl_data {
-	u16 mtu;
-	struct send_context *sc;
-};
-
-/* 16 to directly index */
-#define PER_VL_SEND_CONTEXTS 16
-
 struct err_info_rcvport {
 	u8 status_and_code;
 	u64 packet_flit1;
@@ -1052,8 +1055,6 @@ struct hfi1_devdata {
 	/* for detecting offset above kregbase2 address */
 	u32 base2_start;
 
-	/* Per VL data. Enough for all VLs but not all elements are set/used. */
-	struct per_vl_data vld[PER_VL_SEND_CONTEXTS];
 	/* send context data */
 	struct send_context_info *send_contexts;
 	/* map hardware send contexts to software index */
@@ -1910,7 +1911,7 @@ int fm_set_table(struct hfi1_pportdata *ppd, int which, void *t);
 
 void set_up_vau(struct hfi1_devdata *dd, u8 vau);
 void set_up_vl15(struct hfi1_devdata *dd, u16 vl15buf);
-void reset_link_credits(struct hfi1_devdata *dd);
+void reset_link_credits(struct hfi1_pportdata *ppd);
 void assign_remote_cm_au_table(struct hfi1_devdata *dd, u8 vcu);
 
 int set_buffer_control(struct hfi1_pportdata *ppd, struct buffer_control *bc);

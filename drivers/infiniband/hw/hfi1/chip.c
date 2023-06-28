@@ -5789,10 +5789,10 @@ static int sc_to_vl(struct hfi1_devdata *dd, int sw_index)
 	sc = sci->sc;
 	if (!sc)
 		return -1;
-	if (dd->vld[15].sc == sc)
+	if (sc->ppd->vld[15].sc == sc)
 		return 15;
 	for (i = 0; i < num_vls; i++)
-		if (dd->vld[i].sc == sc)
+		if (sc->ppd->vld[i].sc == sc)
 			return i;
 
 	return -1;
@@ -6425,8 +6425,9 @@ void set_up_vl15(struct hfi1_devdata *dd, u16 vl15buf)
  * Zero all credit details from the previous connection and
  * reset the CM manager's internal counters.
  */
-void reset_link_credits(struct hfi1_devdata *dd)
+void reset_link_credits(struct hfi1_pportdata *ppd)
 {
+	struct hfi1_devdata *dd = ppd->dd;
 	int i;
 
 	/* remove all previous VL credit limits */
@@ -6435,7 +6436,7 @@ void reset_link_credits(struct hfi1_devdata *dd)
 	write_csr(dd, SEND_CM_CREDIT_VL15, 0);
 	write_csr(dd, SEND_CM_GLOBAL_CREDIT, 0);
 	/* reset the CM block */
-	pio_send_control(dd, PSC_CM_RESET);
+	pio_send_control(ppd, PSC_CM_RESET);
 	/* reset cached value */
 	dd->vl15buf_cached = 0;
 }
@@ -10031,22 +10032,22 @@ static void set_send_length(struct hfi1_pportdata *ppd)
 {
 	struct hfi1_devdata *dd = ppd->dd;
 	u32 max_hb = lrh_max_header_bytes(dd), dcmtu;
-	u32 maxvlmtu = dd->vld[15].mtu;
-	u64 len1 = 0, len2 = (((dd->vld[15].mtu + max_hb) >> 2)
+	u32 maxvlmtu = ppd->vld[15].mtu;
+	u64 len1 = 0, len2 = (((ppd->vld[15].mtu + max_hb) >> 2)
 			      & SEND_LEN_CHECK1_LEN_VL15_MASK) <<
 		SEND_LEN_CHECK1_LEN_VL15_SHIFT;
 	int i, j;
 	u32 thres;
 
 	for (i = 0; i < ppd->vls_supported; i++) {
-		if (dd->vld[i].mtu > maxvlmtu)
-			maxvlmtu = dd->vld[i].mtu;
+		if (ppd->vld[i].mtu > maxvlmtu)
+			maxvlmtu = ppd->vld[i].mtu;
 		if (i <= 3)
-			len1 |= (((dd->vld[i].mtu + max_hb) >> 2)
+			len1 |= (((ppd->vld[i].mtu + max_hb) >> 2)
 				 & SEND_LEN_CHECK0_LEN_VL0_MASK) <<
 				((i % 4) * SEND_LEN_CHECK0_LEN_VL1_SHIFT);
 		else
-			len2 |= (((dd->vld[i].mtu + max_hb) >> 2)
+			len2 |= (((ppd->vld[i].mtu + max_hb) >> 2)
 				 & SEND_LEN_CHECK1_LEN_VL4_MASK) <<
 				((i % 4) * SEND_LEN_CHECK1_LEN_VL5_SHIFT);
 	}
@@ -10055,20 +10056,20 @@ static void set_send_length(struct hfi1_pportdata *ppd)
 	/* adjust kernel credit return thresholds based on new MTUs */
 	/* all kernel receive contexts have the same hdrqentsize */
 	for (i = 0; i < ppd->vls_supported; i++) {
-		thres = min(sc_percent_to_threshold(dd->vld[i].sc, 50),
-			    sc_mtu_to_threshold(dd->vld[i].sc,
-						dd->vld[i].mtu,
+		thres = min(sc_percent_to_threshold(ppd->vld[i].sc, 50),
+			    sc_mtu_to_threshold(ppd->vld[i].sc,
+						ppd->vld[i].mtu,
 						get_hdrqentsize(dd->rcd[0])));
 		for (j = 0; j < INIT_SC_PER_VL; j++)
 			sc_set_cr_threshold(
-					pio_select_send_context_vl(dd, j, i),
+					pio_select_send_context_vl(ppd, j, i),
 					    thres);
 	}
-	thres = min(sc_percent_to_threshold(dd->vld[15].sc, 50),
-		    sc_mtu_to_threshold(dd->vld[15].sc,
-					dd->vld[15].mtu,
+	thres = min(sc_percent_to_threshold(ppd->vld[15].sc, 50),
+		    sc_mtu_to_threshold(ppd->vld[15].sc,
+					ppd->vld[15].mtu,
 					dd->rcd[0]->rcvhdrqentsize));
-	sc_set_cr_threshold(dd->vld[15].sc, thres);
+	sc_set_cr_threshold(ppd->vld[15].sc, thres);
 
 	/* Adjust maximum MTU for the port in DC */
 	dcmtu = maxvlmtu == 10240 ? DCC_CFG_PORT_MTU_CAP_10240 :
@@ -10562,8 +10563,8 @@ static inline bool data_vls_operational(struct hfi1_pportdata *ppd)
 
 	for (i = 0; i < ppd->vls_supported; i++) {
 		reg = read_csr(ppd->dd, SEND_CM_CREDIT_VL + (8 * i));
-		if ((reg && !ppd->dd->vld[i].mtu) ||
-		    (!reg && ppd->dd->vld[i].mtu))
+		if ((reg && !ppd->vld[i].mtu) ||
+		    (!reg && ppd->vld[i].mtu))
 			return false;
 	}
 
@@ -11048,7 +11049,7 @@ static int set_vl_weights(struct hfi1_pportdata *ppd, u32 target,
 		 * set to 0 could get stuck in a FIFO with no chance to
 		 * egress.
 		 */
-		ret = stop_drain_data_vls(dd);
+		ret = stop_drain_data_vls(ppd);
 
 	if (ret) {
 		dd_dev_err(
@@ -11070,10 +11071,10 @@ static int set_vl_weights(struct hfi1_pportdata *ppd, u32 target,
 				<< SEND_LOW_PRIORITY_LIST_WEIGHT_SHIFT);
 		write_csr(dd, target + (i * 8), reg);
 	}
-	pio_send_control(dd, PSC_GLOBAL_VLARB_ENABLE);
+	pio_send_control(ppd, PSC_GLOBAL_VLARB_ENABLE);
 
 	if (drain)
-		open_fill_data_vls(dd); /* reopen all VLs */
+		open_fill_data_vls(ppd); /* reopen all VLs */
 
 err:
 	mutex_unlock(&ppd->hls_lock);
@@ -11611,12 +11612,12 @@ int fm_set_table(struct hfi1_pportdata *ppd, int which, void *t)
  *
  * Return 0 if disabled, non-zero if the VLs cannot be disabled.
  */
-static int disable_data_vls(struct hfi1_devdata *dd)
+static int disable_data_vls(struct hfi1_pportdata *ppd)
 {
-	if (is_ax(dd))
+	if (is_ax(ppd->dd))
 		return 1;
 
-	pio_send_control(dd, PSC_DATA_VL_DISABLE);
+	pio_send_control(ppd, PSC_DATA_VL_DISABLE);
 
 	return 0;
 }
@@ -11629,12 +11630,12 @@ static int disable_data_vls(struct hfi1_devdata *dd)
  *
  * Return 0 if successful, non-zero if the VLs cannot be enabled.
  */
-int open_fill_data_vls(struct hfi1_devdata *dd)
+int open_fill_data_vls(struct hfi1_pportdata *ppd)
 {
-	if (is_ax(dd))
+	if (is_ax(ppd->dd))
 		return 1;
 
-	pio_send_control(dd, PSC_DATA_VL_ENABLE);
+	pio_send_control(ppd, PSC_DATA_VL_ENABLE);
 
 	return 0;
 }
@@ -11661,13 +11662,13 @@ static void drain_data_vls(struct hfi1_devdata *dd)
  * // do things with per-VL resources
  * open_fill_data_vls(dd);
  */
-int stop_drain_data_vls(struct hfi1_devdata *dd)
+int stop_drain_data_vls(struct hfi1_pportdata *ppd)
 {
 	int ret;
 
-	ret = disable_data_vls(dd);
+	ret = disable_data_vls(ppd);
 	if (ret == 0)
-		drain_data_vls(dd);
+		drain_data_vls(ppd->dd);
 
 	return ret;
 }
@@ -14965,8 +14966,9 @@ int hfi1_init_dd(struct hfi1_devdata *dd)
 		ppd->vls_operational = ppd->vls_supported;
 		/* Set the default MTU. */
 		for (vl = 0; vl < num_vls; vl++)
-			dd->vld[vl].mtu = hfi1_max_mtu;
-		dd->vld[15].mtu = MAX_MAD_PACKET;
+			ppd->vld[vl].mtu = hfi1_max_mtu;
+		ppd->vld[15].mtu = MAX_MAD_PACKET;
+
 		/*
 		 * Set the initial values to reasonable default, will be set
 		 * for real when link is up.

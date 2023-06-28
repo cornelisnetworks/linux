@@ -30,8 +30,9 @@ void __cm_reset(struct hfi1_devdata *dd, u64 sendctrl)
 }
 
 /* global control of PIO send */
-void pio_send_control(struct hfi1_devdata *dd, int op)
+void pio_send_control(struct hfi1_pportdata *ppd, int op)
 {
+	struct hfi1_devdata *dd = ppd->dd;
 	u64 reg, mask;
 	unsigned long flags;
 	int write = 1;	/* write sendctrl back */
@@ -47,8 +48,8 @@ void pio_send_control(struct hfi1_devdata *dd, int op)
 		fallthrough;
 	case PSC_DATA_VL_ENABLE:
 		mask = 0;
-		for (i = 0; i < ARRAY_SIZE(dd->vld); i++)
-			if (!dd->vld[i].mtu)
+		for (i = 0; i < ARRAY_SIZE(ppd->vld); i++)
+			if (!ppd->vld[i].mtu)
 				mask |= BIT_ULL(i);
 		/* Disallow sending on VLs not enabled */
 		mask = (mask & SEND_CTRL_UNSUPPORTED_VL_MASK) <<
@@ -1759,9 +1760,10 @@ done:
  * This function returns a send context based on the selector and a vl.
  * The mapping fields are protected by RCU
  */
-struct send_context *pio_select_send_context_vl(struct hfi1_devdata *dd,
+struct send_context *pio_select_send_context_vl(struct hfi1_pportdata *ppd,
 						u32 selector, u8 vl)
 {
+	struct hfi1_devdata *dd = ppd->dd;
 	struct pio_vl_map *m;
 	struct pio_map_elem *e;
 	struct send_context *rval;
@@ -1780,14 +1782,14 @@ struct send_context *pio_select_send_context_vl(struct hfi1_devdata *dd,
 	m = rcu_dereference(dd->pio_map);
 	if (unlikely(!m)) {
 		rcu_read_unlock();
-		return dd->vld[0].sc;
+		return ppd->vld[0].sc;
 	}
 	e = m->map[vl & m->mask];
 	rval = e->ksc[selector & e->mask];
 	rcu_read_unlock();
 
 done:
-	rval = !rval ? dd->vld[0].sc : rval;
+	rval = !rval ? ppd->vld[0].sc : rval;
 	return rval;
 }
 
@@ -1799,12 +1801,12 @@ done:
  *
  * This function returns an send context based on the selector and an sc
  */
-struct send_context *pio_select_send_context_sc(struct hfi1_devdata *dd,
+struct send_context *pio_select_send_context_sc(struct hfi1_pportdata *ppd,
 						u32 selector, u8 sc5)
 {
-	u8 vl = sc_to_vlt(dd, sc5);
+	u8 vl = sc_to_vlt(ppd->dd, sc5);
 
-	return pio_select_send_context_vl(dd, selector, vl);
+	return pio_select_send_context_vl(ppd, selector, vl);
 }
 
 /*
@@ -1834,14 +1836,13 @@ static void pio_map_rcu_callback(struct rcu_head *list)
  */
 static void set_threshold(struct hfi1_devdata *dd, int scontext, int i)
 {
+	struct send_context *sc = dd->kernel_send_context[scontext];
 	u32 thres;
 
-	thres = min(sc_percent_to_threshold(dd->kernel_send_context[scontext],
-					    50),
-		    sc_mtu_to_threshold(dd->kernel_send_context[scontext],
-					dd->vld[i].mtu,
+	thres = min(sc_percent_to_threshold(sc, 50),
+		    sc_mtu_to_threshold(sc, sc->ppd->vld[i].mtu,
 					dd->rcd[0]->rcvhdrqentsize));
-	sc_set_cr_threshold(dd->kernel_send_context[scontext], thres);
+	sc_set_cr_threshold(sc, thres);
 }
 
 /*
@@ -1978,13 +1979,13 @@ int init_pervl_scs(struct hfi1_pportdata *ppd)
 	u64 data_vls_mask = (u64)0x00ff; /* VLs 0-7 */
 	u32 ctxt;
 
-	dd->vld[15].sc = sc_alloc(ppd, SC_VL15,
-				  dd->rcd[0]->rcvhdrqentsize, dd->node);
-	if (!dd->vld[15].sc)
+	ppd->vld[15].sc = sc_alloc(ppd, SC_VL15,
+				   dd->rcd[0]->rcvhdrqentsize, dd->node);
+	if (!ppd->vld[15].sc)
 		return -ENOMEM;
 
-	hfi1_init_ctxt(dd->vld[15].sc);
-	dd->vld[15].mtu = enum_to_mtu(OPA_MTU_2048);
+	hfi1_init_ctxt(ppd->vld[15].sc);
+	ppd->vld[15].mtu = enum_to_mtu(OPA_MTU_2048);
 
 	dd->kernel_send_context = kcalloc_node(dd->num_send_contexts,
 					       sizeof(struct send_context *),
@@ -1992,7 +1993,7 @@ int init_pervl_scs(struct hfi1_pportdata *ppd)
 	if (!dd->kernel_send_context)
 		goto freesc15;
 
-	dd->kernel_send_context[0] = dd->vld[15].sc;
+	dd->kernel_send_context[0] = ppd->vld[15].sc;
 
 	for (i = 0; i < num_vls; i++) {
 		/*
@@ -2002,14 +2003,14 @@ int init_pervl_scs(struct hfi1_pportdata *ppd)
 		 * valid at this point and will remain the same for all
 		 * receive contexts.
 		 */
-		dd->vld[i].sc = sc_alloc(ppd, SC_KERNEL,
-					 dd->rcd[0]->rcvhdrqentsize, dd->node);
-		if (!dd->vld[i].sc)
+		ppd->vld[i].sc = sc_alloc(ppd, SC_KERNEL,
+					  dd->rcd[0]->rcvhdrqentsize, dd->node);
+		if (!ppd->vld[i].sc)
 			goto nomem;
-		dd->kernel_send_context[i + 1] = dd->vld[i].sc;
-		hfi1_init_ctxt(dd->vld[i].sc);
+		dd->kernel_send_context[i + 1] = ppd->vld[i].sc;
+		hfi1_init_ctxt(ppd->vld[i].sc);
 		/* non VL15 start with the max MTU */
-		dd->vld[i].mtu = hfi1_max_mtu;
+		ppd->vld[i].mtu = hfi1_max_mtu;
 	}
 	for (i = num_vls; i < INIT_SC_PER_VL * num_vls; i++) {
 		dd->kernel_send_context[i + 1] =
@@ -2019,17 +2020,17 @@ int init_pervl_scs(struct hfi1_pportdata *ppd)
 		hfi1_init_ctxt(dd->kernel_send_context[i + 1]);
 	}
 
-	sc_enable(dd->vld[15].sc);
-	ctxt = dd->vld[15].sc->hw_context;
+	sc_enable(ppd->vld[15].sc);
+	ctxt = ppd->vld[15].sc->hw_context;
 	mask = all_vl_mask & ~(1LL << 15);
 	write_kctxt_csr(dd, ctxt, SC(CHECK_VL), mask);
 	dd_dev_info(dd,
 		    "Using send context %u(%u) for VL15\n",
-		    dd->vld[15].sc->sw_index, ctxt);
+		    ppd->vld[15].sc->sw_index, ctxt);
 
 	for (i = 0; i < num_vls; i++) {
-		sc_enable(dd->vld[i].sc);
-		ctxt = dd->vld[i].sc->hw_context;
+		sc_enable(ppd->vld[i].sc);
+		ctxt = ppd->vld[i].sc->hw_context;
 		mask = all_vl_mask & ~(data_vls_mask);
 		write_kctxt_csr(dd, ctxt, SC(CHECK_VL), mask);
 	}
@@ -2046,8 +2047,8 @@ int init_pervl_scs(struct hfi1_pportdata *ppd)
 
 nomem:
 	for (i = 0; i < num_vls; i++) {
-		sc_free(dd->vld[i].sc);
-		dd->vld[i].sc = NULL;
+		sc_free(ppd->vld[i].sc);
+		ppd->vld[i].sc = NULL;
 	}
 
 	for (i = num_vls; i < INIT_SC_PER_VL * num_vls; i++)
@@ -2057,7 +2058,7 @@ nomem:
 	dd->kernel_send_context = NULL;
 
 freesc15:
-	sc_free(dd->vld[15].sc);
+	sc_free(ppd->vld[15].sc);
 	return -ENOMEM;
 }
 

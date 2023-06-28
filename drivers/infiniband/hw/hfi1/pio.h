@@ -228,9 +228,9 @@ struct pio_vl_map {
 int pio_map_init(struct hfi1_devdata *dd, u8 port, u8 num_vls,
 		 u8 *vl_scontexts);
 void free_pio_map(struct hfi1_devdata *dd);
-struct send_context *pio_select_send_context_vl(struct hfi1_devdata *dd,
+struct send_context *pio_select_send_context_vl(struct hfi1_pportdata *ppd,
 						u32 selector, u8 vl);
-struct send_context *pio_select_send_context_sc(struct hfi1_devdata *dd,
+struct send_context *pio_select_send_context_sc(struct hfi1_pportdata *ppd,
 						u32 selector, u8 sc5);
 
 /* send context functions */
@@ -278,7 +278,7 @@ void pio_kernel_linkup(struct hfi1_devdata *dd);
 #define PSC_DATA_VL_DISABLE 6
 
 void __cm_reset(struct hfi1_devdata *dd, u64 sendctrl);
-void pio_send_control(struct hfi1_devdata *dd, int op);
+void pio_send_control(struct hfi1_pportdata *ppd, int op);
 
 /* PIO copy routines */
 void pio_copy(struct hfi1_devdata *dd, struct pio_buf *pbuf, u64 pbc,

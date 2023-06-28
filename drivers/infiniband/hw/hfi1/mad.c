@@ -727,7 +727,7 @@ static int __subn_get_opa_portinfo(struct opa_smp *smp, u32 am, u8 *data,
 	ibp = &ppd->ibport_data;
 
 	if (ppd->vls_supported / 2 > ARRAY_SIZE(pi->neigh_mtu.pvlx_to_mtu) ||
-	    ppd->vls_supported > ARRAY_SIZE(dd->vld)) {
+	    ppd->vls_supported > ARRAY_SIZE(ppd->vld)) {
 		smp->status |= IB_SMP_INVALID_FIELD;
 		return reply((struct ib_mad_hdr *)smp);
 	}
@@ -792,14 +792,14 @@ static int __subn_get_opa_portinfo(struct opa_smp *smp, u32 am, u8 *data,
 
 	memset(pi->neigh_mtu.pvlx_to_mtu, 0, sizeof(pi->neigh_mtu.pvlx_to_mtu));
 	for (i = 0; i < ppd->vls_supported; i++) {
-		mtu = mtu_to_enum(dd->vld[i].mtu, HFI1_DEFAULT_ACTIVE_MTU);
+		mtu = mtu_to_enum(ppd->vld[i].mtu, HFI1_DEFAULT_ACTIVE_MTU);
 		if ((i % 2) == 0)
 			pi->neigh_mtu.pvlx_to_mtu[i / 2] |= (mtu << 4);
 		else
 			pi->neigh_mtu.pvlx_to_mtu[i / 2] |= mtu;
 	}
 	/* don't forget VL 15 */
-	mtu = mtu_to_enum(dd->vld[15].mtu, 2048);
+	mtu = mtu_to_enum(ppd->vld[15].mtu, 2048);
 	pi->neigh_mtu.pvlx_to_mtu[15 / 2] |= mtu;
 	pi->smsl = ibp->rvp.sm_sl & OPA_PI_MASK_SMSL;
 	pi->operational_vls = hfi1_get_ib_cfg(ppd, HFI1_IB_CFG_OP_VLS);
@@ -1429,7 +1429,7 @@ static int __subn_set_opa_portinfo(struct opa_smp *smp, u32 am, u8 *data,
 				    ibp->rvp.vl_high_limit);
 
 	if (ppd->vls_supported / 2 > ARRAY_SIZE(pi->neigh_mtu.pvlx_to_mtu) ||
-	    ppd->vls_supported > ARRAY_SIZE(dd->vld)) {
+	    ppd->vls_supported > ARRAY_SIZE(ppd->vld)) {
 		smp->status |= IB_SMP_INVALID_FIELD;
 		return reply((struct ib_mad_hdr *)smp);
 	}
@@ -1447,11 +1447,11 @@ static int __subn_set_opa_portinfo(struct opa_smp *smp, u32 am, u8 *data,
 			smp->status |= IB_SMP_INVALID_FIELD;
 			mtu = hfi1_max_mtu; /* use a valid MTU */
 		}
-		if (dd->vld[i].mtu != mtu) {
+		if (ppd->vld[i].mtu != mtu) {
 			dd_dev_info(dd,
 				    "MTU change on vl %d from %d to %d\n",
-				    i, dd->vld[i].mtu, mtu);
-			dd->vld[i].mtu = mtu;
+				    i, ppd->vld[i].mtu, mtu);
+			ppd->vld[i].mtu = mtu;
 			call_set_mtu++;
 		}
 	}
@@ -1461,11 +1461,11 @@ static int __subn_set_opa_portinfo(struct opa_smp *smp, u32 am, u8 *data,
 	mtu = enum_to_mtu(pi->neigh_mtu.pvlx_to_mtu[15 / 2] & 0xF);
 	if (mtu < 2048 || mtu == 0xffff)
 		mtu = 2048;
-	if (dd->vld[15].mtu != mtu) {
+	if (ppd->vld[15].mtu != mtu) {
 		dd_dev_info(dd,
 			    "MTU change on vl 15 from %d to %d\n",
-			    dd->vld[15].mtu, mtu);
-		dd->vld[15].mtu = mtu;
+			    ppd->vld[15].mtu, mtu);
+		ppd->vld[15].mtu = mtu;
 		call_set_mtu++;
 	}
 	if (call_set_mtu)

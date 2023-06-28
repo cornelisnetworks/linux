@@ -345,8 +345,9 @@ static ssize_t vl2mtu_attr_show(struct ib_device *ibdev, u32 port_num,
 	struct hfi1_vl2mtu_attr *vlattr =
 		container_of(attr, struct hfi1_vl2mtu_attr, attr);
 	struct hfi1_devdata *dd = dd_from_ibdev(ibdev);
+	struct hfi1_pportdata *ppd = &dd->pport[port_num - 1];
 
-	return sysfs_emit(buf, "%u\n", dd->vld[vlattr->vl].mtu);
+	return sysfs_emit(buf, "%u\n", ppd->vld[vlattr->vl].mtu);
 }
 
 #define HFI1_VL2MTU_ATTR(N)                                                    \

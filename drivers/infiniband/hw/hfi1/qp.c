@@ -265,7 +265,6 @@ int hfi1_setup_wqe(struct rvt_qp *qp, struct rvt_swqe *wqe, bool *call_send)
 	struct hfi1_ibport *ibp = to_iport(qp->ibqp.device, qp->port_num);
 	struct rvt_ah *ah;
 	struct hfi1_pportdata *ppd;
-	struct hfi1_devdata *dd;
 
 	switch (qp->ibqp.qp_type) {
 	case IB_QPT_RC:
@@ -286,8 +285,7 @@ int hfi1_setup_wqe(struct rvt_qp *qp, struct rvt_swqe *wqe, bool *call_send)
 		 * depending on the SL2SC and SC2VL tables at the time.
 		 */
 		ppd = ppd_from_ibp(ibp);
-		dd = dd_from_ppd(ppd);
-		if (wqe->length > dd->vld[15].mtu)
+		if (wqe->length > ppd->vld[15].mtu)
 			return -EINVAL;
 		break;
 	case IB_QPT_GSI:
@@ -563,17 +561,19 @@ struct sdma_engine *qp_to_sdma_engine(struct rvt_qp *qp, u8 sc5)
  */
 struct send_context *qp_to_send_context(struct rvt_qp *qp, u8 sc5)
 {
-	struct hfi1_devdata *dd = dd_from_ibdev(qp->ibqp.device);
+	struct hfi1_ibport *ibp = to_iport(qp->ibqp.device, qp->port_num);
+	struct hfi1_pportdata *ppd = ppd_from_ibp(ibp);
+	struct hfi1_devdata *dd = ppd->dd;
 
 	switch (qp->ibqp.qp_type) {
 	case IB_QPT_SMI:
 		/* SMA packets to VL15 */
-		return dd->vld[15].sc;
+		return ppd->vld[15].sc;
 	default:
 		break;
 	}
 
-	return pio_select_send_context_sc(dd, qp->ibqp.qp_num >> dd->qos_shift,
+	return pio_select_send_context_sc(ppd, qp->ibqp.qp_num >> dd->qos_shift,
 					  sc5);
 }
 
@@ -805,16 +805,16 @@ u32 mtu_from_qp(struct rvt_dev_info *rdi, struct rvt_qp *qp, u32 pmtu)
 	struct hfi1_devdata *dd = container_of(verbs_dev,
 					       struct hfi1_devdata,
 					       verbs_dev);
-	struct hfi1_ibport *ibp;
+	struct hfi1_pportdata *ppd = &dd->pport[qp->port_num - 1];
+	struct hfi1_ibport *ibp = &ppd->ibport_data;
 	u8 sc, vl;
 
-	ibp = &dd->pport[qp->port_num - 1].ibport_data;
 	sc = ibp->sl_to_sc[rdma_ah_get_sl(&qp->remote_ah_attr)];
 	vl = sc_to_vlt(dd, sc);
 
 	mtu = verbs_mtu_enum_to_int(qp->ibqp.device, pmtu);
 	if (vl < PER_VL_SEND_CONTEXTS)
-		mtu = min_t(u32, mtu, dd->vld[vl].mtu);
+		mtu = min_t(u32, mtu, ppd->vld[vl].mtu);
 	return mtu;
 }
 

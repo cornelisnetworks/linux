@@ -1526,7 +1526,7 @@ static void hfi1_notify_new_ah(struct ib_device *ibdev,
 	dd = dd_from_ppd(ppd);
 	ah->vl = sc_to_vlt(dd, sc5);
 	if (ah->vl < num_vls || ah->vl == 15)
-		ah->log_pmtu = ilog2(dd->vld[ah->vl].mtu);
+		ah->log_pmtu = ilog2(ppd->vld[ah->vl].mtu);
 }
 
 /**

@@ -178,7 +178,7 @@ void handle_linkup_change(struct hfi1_devdata *dd, u32 linkup)
 
 		/* clear HW details of the previous connection */
 		ppd->actual_vls_operational = 0;
-		reset_link_credits(dd);
+		reset_link_credits(ppd);
 
 		/* freeze after a link down to guarantee a clean egress */
 		start_freeze_handling(ppd, FREEZE_SELF | FREEZE_LINK_DOWN);
