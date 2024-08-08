@@ -1789,6 +1789,9 @@ int hfi1_register_ib_device(struct hfi1_devdata *dd)
 	strscpy(ibdev->node_desc, init_utsname()->nodename,
 		sizeof(ibdev->node_desc));
 
+	if (IS_ENABLED(CONFIG_INFINIBAND_USER_ACCESS))
+		ibdev->driver_def = hfi1_ib_defs;
+
 	/*
 	 * Fill in rvt info object.
 	 */

@@ -11,4 +11,6 @@
 int hfi1_alloc_ucontext(struct ib_ucontext *ucontext, struct ib_udata *udata);
 void hfi1_dealloc_ucontext(struct ib_ucontext *ucontext);
 
+extern const struct uapi_definition hfi1_ib_defs[];
+
 #endif /* HFI1_UVERBS_H */
