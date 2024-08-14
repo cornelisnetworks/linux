@@ -22,6 +22,7 @@
 #include "user_sdma.h"
 #include "user_exp_rcv.h"
 #include "aspm.h"
+#include "file_ops.h"
 
 #undef pr_fmt
 #define pr_fmt(fmt) DRIVER_NAME ": " fmt
@@ -143,6 +144,27 @@ static inline int is_valid_mmap(u64 token)
 	return (HFI1_MMAP_TOKEN_GET(MAGIC, token) == HFI1_MMAP_MAGIC);
 }
 
+struct hfi1_filedata *hfi1_alloc_filedata(struct hfi1_devdata *dd)
+{
+	struct hfi1_filedata *fd;
+
+	/* The real work is performed later in assign_ctxt() */
+
+	fd = kzalloc(sizeof(*fd), GFP_KERNEL);
+
+	if (!fd || init_srcu_struct(&fd->pq_srcu))
+		goto nomem;
+	spin_lock_init(&fd->pq_rcu_lock);
+	spin_lock_init(&fd->tid_lock);
+	spin_lock_init(&fd->invalid_lock);
+	fd->rec_cpu_num = -1; /* no cpu affinity by default */
+	fd->dd = dd;
+	return fd;
+nomem:
+	kfree(fd);
+	return NULL;
+}
+
 static int hfi1_file_open(struct inode *inode, struct file *fp)
 {
 	struct hfi1_filedata *fd;
@@ -156,21 +178,13 @@ static int hfi1_file_open(struct inode *inode, struct file *fp)
 	if (!refcount_inc_not_zero(&dd->user_refcount))
 		return -ENXIO;
 
-	/* The real work is performed later in assign_ctxt() */
-
-	fd = kzalloc(sizeof(*fd), GFP_KERNEL);
-
-	if (!fd || init_srcu_struct(&fd->pq_srcu))
+	fd = hfi1_alloc_filedata(dd);
+	if (!fd)
 		goto nomem;
-	spin_lock_init(&fd->pq_rcu_lock);
-	spin_lock_init(&fd->tid_lock);
-	spin_lock_init(&fd->invalid_lock);
-	fd->rec_cpu_num = -1; /* no cpu affinity by default */
-	fd->dd = dd;
+
 	fp->private_data = fd;
 	return 0;
 nomem:
-	kfree(fd);
 	fp->private_data = NULL;
 	if (refcount_dec_and_test(&dd->user_refcount))
 		complete(&dd->user_comp);
@@ -624,16 +638,11 @@ static __poll_t hfi1_poll(struct file *fp, struct poll_table_struct *pt)
 	return pollflag;
 }
 
-static int hfi1_file_close(struct inode *inode, struct file *fp)
+void hfi1_dealloc_filedata(struct hfi1_filedata *fdata)
 {
-	struct hfi1_filedata *fdata = fp->private_data;
 	struct hfi1_ctxtdata *uctxt = fdata->uctxt;
-	struct hfi1_devdata *dd = container_of(inode->i_cdev,
-					       struct hfi1_devdata,
-					       user_cdev);
+	struct hfi1_devdata *dd = fdata->dd;
 	unsigned long flags, *ev;
-
-	fp->private_data = NULL;
 
 	if (!uctxt)
 		goto done;
@@ -702,12 +711,22 @@ static int hfi1_file_close(struct inode *inode, struct file *fp)
 
 	deallocate_ctxt(uctxt);
 done:
+	cleanup_srcu_struct(&fdata->pq_srcu);
+	kfree(fdata);
+}
 
+static int hfi1_file_close(struct inode *inode, struct file *fp)
+{
+	struct hfi1_filedata *fdata = fp->private_data;
+	struct hfi1_devdata *dd = container_of(inode->i_cdev,
+					       struct hfi1_devdata,
+					       user_cdev);
+
+	fp->private_data = NULL;
+	hfi1_dealloc_filedata(fdata);
 	if (refcount_dec_and_test(&dd->user_refcount))
 		complete(&dd->user_comp);
 
-	cleanup_srcu_struct(&fdata->pq_srcu);
-	kfree(fdata);
 	return 0;
 }
 

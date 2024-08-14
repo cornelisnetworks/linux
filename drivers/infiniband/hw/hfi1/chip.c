@@ -14,6 +14,7 @@
 #include <linux/module.h>
 
 #include "hfi.h"
+#include "file_ops.h"
 #include "trace.h"
 #include "mad.h"
 #include "pio.h"

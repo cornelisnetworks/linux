@@ -9,6 +9,7 @@
 			/ (OPA_PARTITION_TABLE_BLK_SIZE * sizeof(u16)))
 
 #include "hfi.h"
+#include "file_ops.h"
 #include "mad.h"
 #include "trace.h"
 #include "qp.h"

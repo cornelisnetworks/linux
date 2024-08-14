@@ -8,6 +8,7 @@
 #include <linux/bitmap.h>
 
 #include "hfi.h"
+#include "file_ops.h"
 #include "common.h"
 #include "sdma.h"
 

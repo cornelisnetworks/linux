@@ -1886,7 +1886,6 @@ int set_mtu(struct hfi1_pportdata *ppd);
 
 int hfi1_set_lid(struct hfi1_pportdata *ppd, u32 lid, u8 lmc);
 void hfi1_disable_after_error(struct hfi1_devdata *dd);
-int hfi1_set_uevent_bits(struct hfi1_pportdata *ppd, const int evtbit);
 int hfi1_rcvbuf_validate(u32 size, u8 type, u16 *encode);
 
 int fm_get_table(struct hfi1_pportdata *ppd, int which, void *t);
@@ -2143,9 +2142,6 @@ static inline bool hfi1_packet_present(struct hfi1_ctxtdata *rcd)
 extern const char ib_hfi1_version[];
 extern const struct attribute_group ib_hfi1_attr_group;
 extern const struct attribute_group *hfi1_attr_port_groups[];
-
-int hfi1_device_create(struct hfi1_devdata *dd);
-void hfi1_device_remove(struct hfi1_devdata *dd);
 
 int hfi1_verbs_register_sysfs(struct hfi1_devdata *dd);
 void hfi1_verbs_unregister_sysfs(struct hfi1_devdata *dd);

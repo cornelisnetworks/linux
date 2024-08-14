@@ -17,6 +17,7 @@
 #include <rdma/rdma_vt.h>
 
 #include "hfi.h"
+#include "file_ops.h"
 #include "device.h"
 #include "common.h"
 #include "trace.h"
