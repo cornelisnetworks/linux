@@ -25,6 +25,7 @@
 #include "fault.h"
 #include "affinity.h"
 #include "ipoib.h"
+#include "uverbs.h"
 
 static unsigned int hfi1_lkey_table_size = 16;
 module_param_named(lkey_table_size, hfi1_lkey_table_size, uint,
@@ -1840,6 +1841,8 @@ int hfi1_register_ib_device(struct hfi1_devdata *dd)
 	dd->verbs_dev.rdi.driver_f.setup_wqe = hfi1_setup_wqe;
 	dd->verbs_dev.rdi.driver_f.comp_vect_cpu_lookup =
 						hfi1_comp_vect_mappings_lookup;
+	dd->verbs_dev.rdi.driver_f.alloc_ucontext = hfi1_alloc_ucontext;
+	dd->verbs_dev.rdi.driver_f.dealloc_ucontext = hfi1_dealloc_ucontext;
 
 	/* completeion queue */
 	dd->verbs_dev.rdi.ibdev.num_comp_vectors = dd->comp_vect_possible_cpus;

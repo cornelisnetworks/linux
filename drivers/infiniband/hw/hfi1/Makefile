@@ -48,6 +48,7 @@ hfi1-y := \
 	user_exp_rcv.o \
 	user_pages.o \
 	user_sdma.o \
+	uverbs.o \
 	verbs.o \
 	verbs_txreq.o \
 	vnic_main.o \
