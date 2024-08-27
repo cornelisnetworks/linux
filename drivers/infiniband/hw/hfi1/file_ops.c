@@ -66,11 +66,10 @@ static void deallocate_ctxt(struct hfi1_ctxtdata *uctxt);
 static __poll_t poll_urgent(struct file *fp, struct poll_table_struct *pt);
 static __poll_t poll_next(struct file *fp, struct poll_table_struct *pt);
 static int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
-			  unsigned long arg);
-static int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, unsigned long arg);
+			  unsigned long events);
+static int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, u16 pkey);
 static int ctxt_reset(struct hfi1_ctxtdata *uctxt);
-static int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt,
-		       unsigned long arg);
+static int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt, int arg);
 static vm_fault_t vma_fault(struct vm_fault *vmf);
 static long hfi1_file_ioctl(struct file *fp, unsigned int cmd,
 			    unsigned long arg);
@@ -198,6 +197,7 @@ static long hfi1_file_ioctl(struct file *fp, unsigned int cmd,
 	struct hfi1_ctxtdata *uctxt = fd->uctxt;
 	int ret = 0;
 	int uval = 0;
+	unsigned long events;
 
 	hfi1_cdbg(IOCTL, "IOCTL recv: 0x%x", cmd);
 	if (cmd != HFI1_IOCTL_ASSIGN_CTXT &&
@@ -236,7 +236,9 @@ static long hfi1_file_ioctl(struct file *fp, unsigned int cmd,
 		break;
 
 	case HFI1_IOCTL_RECV_CTRL:
-		ret = manage_rcvq(uctxt, fd->subctxt, arg);
+		if (get_user(uval, (int __user *)arg))
+			return -EFAULT;
+		ret = manage_rcvq(uctxt, fd->subctxt, uval);
 		break;
 
 	case HFI1_IOCTL_POLL_TYPE:
@@ -246,11 +248,17 @@ static long hfi1_file_ioctl(struct file *fp, unsigned int cmd,
 		break;
 
 	case HFI1_IOCTL_ACK_EVENT:
-		ret = user_event_ack(uctxt, fd->subctxt, arg);
+		if (get_user(events, (unsigned long __user *)arg))
+			return -EFAULT;
+		ret = user_event_ack(uctxt, fd->subctxt, events);
 		break;
 
 	case HFI1_IOCTL_SET_PKEY:
-		ret = set_ctxt_pkey(uctxt, arg);
+		u16 pkey;
+
+		if (get_user(pkey, (u16 __user *)arg))
+			return -EFAULT;
+		ret = set_ctxt_pkey(uctxt, pkey);
 		break;
 
 	case HFI1_IOCTL_CTXT_RESET:
@@ -1435,9 +1443,6 @@ static int user_exp_rcv_invalid(struct hfi1_filedata *fd, unsigned long arg,
 	if (sizeof(tinfo) != len)
 		return -EINVAL;
 
-	if (!fd->invalid_tids)
-		return -EINVAL;
-
 	if (copy_from_user(&tinfo, (void __user *)arg, (sizeof(tinfo))))
 		return -EFAULT;
 
@@ -1538,24 +1543,20 @@ int hfi1_set_uevent_bits(struct hfi1_pportdata *ppd, const int evtbit)
  * manage_rcvq - manage a context's receive queue
  * @uctxt: the context
  * @subctxt: the sub-context
- * @arg: start/stop action to carry out
+ * @start_stop: action to carry out
  *
  * start_stop == 0 disables receive on the context, for use in queue
  * overflow conditions.  start_stop==1 re-enables, to be used to
  * re-init the software copy of the head register
  */
 static int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt,
-		       unsigned long arg)
+		       int start_stop)
 {
 	struct hfi1_devdata *dd = uctxt->dd;
 	unsigned int rcvctrl_op;
-	int start_stop;
 
 	if (subctxt)
 		return 0;
-
-	if (get_user(start_stop, (int __user *)arg))
-		return -EFAULT;
 
 	/* atomically clear receive enable ctxt. */
 	if (start_stop) {
@@ -1585,18 +1586,14 @@ static int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt,
  * set, if desired, and checks again in future.
  */
 static int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
-			  unsigned long arg)
+			  unsigned long events)
 {
 	int i;
 	struct hfi1_devdata *dd = uctxt->dd;
 	unsigned long *evs;
-	unsigned long events;
 
 	if (!dd->events)
 		return 0;
-
-	if (get_user(events, (unsigned long __user *)arg))
-		return -EFAULT;
 
 	evs = dd->events + uctxt_offset(uctxt) + subctxt;
 
@@ -1608,18 +1605,14 @@ static int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
 	return 0;
 }
 
-static int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, unsigned long arg)
+static int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, u16 pkey)
 {
 	int i;
 	struct hfi1_pportdata *ppd = uctxt->ppd;
 	struct hfi1_devdata *dd = uctxt->dd;
-	u16 pkey;
 
 	if (!HFI1_CAP_IS_USET(PKEY_CHECK))
 		return -EPERM;
-
-	if (get_user(pkey, (u16 __user *)arg))
-		return -EFAULT;
 
 	if (pkey == LIM_MGMT_P_KEY || pkey == FULL_MGMT_P_KEY)
 		return -EINVAL;
