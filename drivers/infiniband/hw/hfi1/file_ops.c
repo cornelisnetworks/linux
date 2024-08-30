@@ -73,6 +73,9 @@ static int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt, int arg);
 static vm_fault_t vma_fault(struct vm_fault *vmf);
 static long hfi1_file_ioctl(struct file *fp, unsigned int cmd,
 			    unsigned long arg);
+static int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
+			       struct hfi1_user_info *uinfo,
+			       u8 pidx, u8 kdeth_rcv_hdr);
 
 static const struct file_operations hfi1_file_ops = {
 	.owner = THIS_MODULE,
@@ -801,13 +804,8 @@ static int complete_subctxt(struct hfi1_filedata *fd)
 
 static int assign_ctxt(struct hfi1_filedata *fd, unsigned long arg, u32 len)
 {
-	int ret;
 	unsigned int swmajor;
-	struct hfi1_ctxtdata *uctxt = NULL;
 	struct hfi1_user_info uinfo;
-
-	if (fd->uctxt)
-		return -EINVAL;
 
 	if (sizeof(uinfo) != len)
 		return -EINVAL;
@@ -819,7 +817,30 @@ static int assign_ctxt(struct hfi1_filedata *fd, unsigned long arg, u32 len)
 	if (swmajor != HFI1_USER_SWMAJOR)
 		return -ENODEV;
 
-	if (uinfo.subctxt_cnt > HFI1_MAX_SHARED_CTXTS)
+	return hfi1_do_assign_ctxt(fd, &uinfo, 0, 0);
+}
+
+static int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
+			       struct hfi1_user_info *uinfo,
+			       u8 pidx, u8 kdeth_rcv_hdr)
+{
+	struct hfi1_ctxtdata *uctxt = NULL;
+	int ret;
+
+	if (fd->uctxt)
+		return -EINVAL;
+
+	if (uinfo->subctxt_cnt > HFI1_MAX_SHARED_CTXTS)
+		return -EINVAL;
+
+	/* check, then assign port ASAP */
+	if (pidx >= fd->dd->num_pports)
+		return -EINVAL;
+
+	/* verify kdeth receive header size */
+	if (kdeth_rcv_hdr == 0) /* change to default size */
+		kdeth_rcv_hdr = DEFAULT_RCVHDRSIZE;
+	else
 		return -EINVAL;
 
 	/*
@@ -831,14 +852,14 @@ static int assign_ctxt(struct hfi1_filedata *fd, unsigned long arg, u32 len)
 	 * Get a sub context if available  (fd->uctxt will be set).
 	 * ret < 0 error, 0 no context, 1 sub-context found
 	 */
-	ret = find_sub_ctxt(fd, &uinfo);
+	ret = find_sub_ctxt(fd, uinfo);
 
 	/*
 	 * Allocate a base context if context sharing is not required or a
 	 * sub context wasn't found.
 	 */
 	if (!ret)
-		ret = allocate_ctxt(fd, fd->dd, &uinfo, &uctxt);
+		ret = allocate_ctxt(fd, fd->dd, uinfo, &uctxt);
 
 	mutex_unlock(&hfi1_mutex);
 
