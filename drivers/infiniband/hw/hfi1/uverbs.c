@@ -48,7 +48,23 @@ static inline struct hfi1_filedata *fd_from_attrs(struct uverbs_attr_bundle *att
 static int UVERBS_HANDLER(HFI1_METHOD_ASSIGN_CTXT)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_assign_ctxt_cmd cmd;
+	unsigned int swmajor;
+	int ret;
+
+	ret = uverbs_copy_from(&cmd, attrs, HFI1_ATTR_ASSIGN_CTXT_CMD);
+	if (ret)
+		return ret;
+
+	swmajor = cmd.userversion >> HFI1_SWMAJOR_SHIFT;
+	if (swmajor != HFI1_RDMA_USER_SWMAJOR)
+		return -ENODEV;
+
+	if (cmd.reserved1 != 0 || cmd.reserved2 != 0)
+		return -EINVAL;
+
+	return hfi1_do_assign_ctxt(fd, &cmd);
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_CTXT_INFO)(

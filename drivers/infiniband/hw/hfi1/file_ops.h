@@ -13,5 +13,7 @@ int hfi1_device_create(struct hfi1_devdata *dd);
 void hfi1_device_remove(struct hfi1_devdata *dd);
 struct hfi1_filedata *hfi1_alloc_filedata(struct hfi1_devdata *dd);
 void hfi1_dealloc_filedata(struct hfi1_filedata *fdata);
+int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
+			const struct hfi1_assign_ctxt_cmd *uinfo);
 
 #endif /* _HFI1_FILE_OPS_H */

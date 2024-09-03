@@ -41,7 +41,7 @@ static int hfi1_file_mmap(struct file *fp, struct vm_area_struct *vma);
 static u64 kvirt_to_phys(void *addr);
 static int assign_ctxt(struct hfi1_filedata *fd, unsigned long arg, u32 len);
 static void init_subctxts(struct hfi1_ctxtdata *uctxt,
-			  const struct hfi1_user_info *uinfo);
+			  const struct hfi1_assign_ctxt_cmd *uinfo);
 static int init_user_ctxt(struct hfi1_filedata *fd,
 			  struct hfi1_ctxtdata *uctxt);
 static void user_init(struct hfi1_ctxtdata *uctxt);
@@ -58,9 +58,9 @@ static int setup_base_ctxt(struct hfi1_filedata *fd,
 static int setup_subctxt(struct hfi1_ctxtdata *uctxt);
 
 static int find_sub_ctxt(struct hfi1_filedata *fd,
-			 const struct hfi1_user_info *uinfo);
-static int allocate_ctxt(struct hfi1_filedata *fd, struct hfi1_devdata *dd,
-			 struct hfi1_user_info *uinfo,
+			 const struct hfi1_assign_ctxt_cmd *uinfo);
+static int allocate_ctxt(struct hfi1_filedata *fd,
+			 const struct hfi1_assign_ctxt_cmd *uinfo,
 			 struct hfi1_ctxtdata **cd);
 static void deallocate_ctxt(struct hfi1_ctxtdata *uctxt);
 static __poll_t poll_urgent(struct file *fp, struct poll_table_struct *pt);
@@ -73,9 +73,6 @@ static int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt, int arg);
 static vm_fault_t vma_fault(struct vm_fault *vmf);
 static long hfi1_file_ioctl(struct file *fp, unsigned int cmd,
 			    unsigned long arg);
-static int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
-			       struct hfi1_user_info *uinfo,
-			       u8 pidx, u8 kdeth_rcv_hdr);
 
 static const struct file_operations hfi1_file_ops = {
 	.owner = THIS_MODULE,
@@ -805,6 +802,7 @@ static int complete_subctxt(struct hfi1_filedata *fd)
 static int assign_ctxt(struct hfi1_filedata *fd, unsigned long arg, u32 len)
 {
 	unsigned int swmajor;
+	struct hfi1_assign_ctxt_cmd cmd = {};
 	struct hfi1_user_info uinfo;
 
 	if (sizeof(uinfo) != len)
@@ -817,15 +815,24 @@ static int assign_ctxt(struct hfi1_filedata *fd, unsigned long arg, u32 len)
 	if (swmajor != HFI1_USER_SWMAJOR)
 		return -ENODEV;
 
-	return hfi1_do_assign_ctxt(fd, &uinfo, 0, 0);
+	/* convert to new ioctl struct */
+	cmd.userversion = uinfo.userversion;
+	cmd.port = 1; /* Hard code for now */
+	cmd.kdeth_rcvhdrsz = 0;
+	cmd.subctxt_cnt = uinfo.subctxt_cnt;
+	cmd.subctxt_id = uinfo.subctxt_id;
+	memcpy(cmd.uuid, uinfo.uuid, sizeof(cmd.uuid));
+
+	return hfi1_do_assign_ctxt(fd, &cmd);
 }
 
-static int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
-			       struct hfi1_user_info *uinfo,
-			       u8 pidx, u8 kdeth_rcv_hdr)
+int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
+			const struct hfi1_assign_ctxt_cmd *uinfo)
 {
 	struct hfi1_ctxtdata *uctxt = NULL;
 	int ret;
+	u8 pidx = uinfo->port -1;
+	u8 kdeth_rcv_hdr = uinfo->kdeth_rcvhdrsz;
 
 	if (fd->uctxt)
 		return -EINVAL;
@@ -859,7 +866,7 @@ static int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
 	 * sub context wasn't found.
 	 */
 	if (!ret)
-		ret = allocate_ctxt(fd, fd->dd, uinfo, &uctxt);
+		ret = allocate_ctxt(fd, uinfo, &uctxt);
 
 	mutex_unlock(&hfi1_mutex);
 
@@ -890,7 +897,7 @@ static int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
  * can be used for a sub context.
  */
 static int match_ctxt(struct hfi1_filedata *fd,
-		      const struct hfi1_user_info *uinfo,
+		      const struct hfi1_assign_ctxt_cmd *uinfo,
 		      struct hfi1_ctxtdata *uctxt)
 {
 	struct hfi1_devdata *dd = fd->dd;
@@ -952,7 +959,7 @@ static int match_ctxt(struct hfi1_filedata *fd,
  *           EBUSY (all sub contexts in use)
  */
 static int find_sub_ctxt(struct hfi1_filedata *fd,
-			 const struct hfi1_user_info *uinfo)
+			 const struct hfi1_assign_ctxt_cmd *uinfo)
 {
 	struct hfi1_ctxtdata *uctxt;
 	struct hfi1_devdata *dd = fd->dd;
@@ -976,11 +983,12 @@ static int find_sub_ctxt(struct hfi1_filedata *fd,
 	return 0;
 }
 
-static int allocate_ctxt(struct hfi1_filedata *fd, struct hfi1_devdata *dd,
-			 struct hfi1_user_info *uinfo,
+static int allocate_ctxt(struct hfi1_filedata *fd,
+			 const struct hfi1_assign_ctxt_cmd *uinfo,
 			 struct hfi1_ctxtdata **rcd)
 {
 	struct hfi1_ctxtdata *uctxt;
+	struct hfi1_devdata *dd = fd->dd;
 	int ret, numa;
 
 	if (dd->flags & HFI1_FROZEN) {
@@ -1076,7 +1084,7 @@ static void deallocate_ctxt(struct hfi1_ctxtdata *uctxt)
 }
 
 static void init_subctxts(struct hfi1_ctxtdata *uctxt,
-			  const struct hfi1_user_info *uinfo)
+			  const struct hfi1_assign_ctxt_cmd *uinfo)
 {
 	uctxt->subctxt_cnt = uinfo->subctxt_cnt;
 	uctxt->subctxt_id = uinfo->subctxt_id;
