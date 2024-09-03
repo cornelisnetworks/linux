@@ -65,7 +65,6 @@ static int allocate_ctxt(struct hfi1_filedata *fd,
 static void deallocate_ctxt(struct hfi1_ctxtdata *uctxt);
 static __poll_t poll_urgent(struct file *fp, struct poll_table_struct *pt);
 static __poll_t poll_next(struct file *fp, struct poll_table_struct *pt);
-static int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, u16 pkey);
 static int ctxt_reset(struct hfi1_ctxtdata *uctxt);
 static vm_fault_t vma_fault(struct vm_fault *vmf);
 static long hfi1_file_ioctl(struct file *fp, unsigned int cmd,
@@ -1630,7 +1629,7 @@ int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
 	return 0;
 }
 
-static int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, u16 pkey)
+int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, u16 pkey)
 {
 	int i;
 	struct hfi1_pportdata *ppd = uctxt->ppd;

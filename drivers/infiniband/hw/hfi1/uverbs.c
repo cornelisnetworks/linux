@@ -337,7 +337,23 @@ static int UVERBS_HANDLER(HFI1_METHOD_ACK_EVENT)(
 static int UVERBS_HANDLER(HFI1_METHOD_SET_PKEY)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_ctxtdata *uctxt = fd->uctxt;
+	struct hfi1_set_pkey_cmd cmd;
+	int ret;
+
+	if (!uctxt)
+		return -EINVAL;
+
+	ret = uverbs_copy_from(&cmd, attrs, HFI1_ATTR_SET_PKEY_CMD);
+	if (ret)
+		return ret;
+
+	/* verify small reserved array of u8s is zero */
+	if (memcmp(cmd.reserved, &zero8, sizeof(cmd.reserved)) != 0)
+		return -EINVAL;
+
+	return set_ctxt_pkey(uctxt, cmd.pkey);
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_CTXT_RESET)(

@@ -20,6 +20,7 @@ ssize_t hfi1_do_write_iter(struct hfi1_filedata *fd, struct iov_iter *from);
 int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt, int start_stop);
 int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
 		   unsigned long events);
+int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, u16 pkey);
 
 /*
  * Types of memories mapped into user processes' space
