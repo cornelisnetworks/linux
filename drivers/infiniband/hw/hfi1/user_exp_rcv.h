@@ -57,7 +57,8 @@ int hfi1_user_exp_rcv_setup(struct hfi1_filedata *fd,
 int hfi1_user_exp_rcv_clear(struct hfi1_filedata *fd,
 			    struct hfi1_tid_info *tinfo);
 int hfi1_user_exp_rcv_invalid(struct hfi1_filedata *fd,
-			      struct hfi1_tid_info *tinfo);
+			      struct hfi1_tid_info *tinfo,
+			      bool do_tidcnt_check);
 
 static inline struct mm_struct *mm_from_tid_node(struct tid_rb_node *node)
 {

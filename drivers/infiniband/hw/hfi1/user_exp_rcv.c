@@ -523,7 +523,8 @@ int hfi1_user_exp_rcv_clear(struct hfi1_filedata *fd,
 }
 
 int hfi1_user_exp_rcv_invalid(struct hfi1_filedata *fd,
-			      struct hfi1_tid_info *tinfo)
+			      struct hfi1_tid_info *tinfo,
+			      bool do_tidcnt_check)
 {
 	struct hfi1_ctxtdata *uctxt = fd->uctxt;
 	unsigned long *ev = uctxt->dd->events +
@@ -545,7 +546,9 @@ int hfi1_user_exp_rcv_invalid(struct hfi1_filedata *fd,
 		return -EFAULT;
 
 	spin_lock(&fd->invalid_lock);
-	if (fd->invalid_tid_idx) {
+	if (do_tidcnt_check && tinfo->tidcnt < fd->invalid_tid_idx) {
+		ret = -ENOSPC;
+	} else if (fd->invalid_tid_idx) {
 		memcpy(array, fd->invalid_tids, sizeof(*array) *
 		       fd->invalid_tid_idx);
 		memset(fd->invalid_tids, 0, sizeof(*fd->invalid_tids) *
@@ -562,7 +565,7 @@ int hfi1_user_exp_rcv_invalid(struct hfi1_filedata *fd,
 	}
 	spin_unlock(&fd->invalid_lock);
 
-	if (tinfo->tidcnt) {
+	if (ret == 0 && tinfo->tidcnt) {
 		if (copy_to_user((void __user *)tinfo->tidlist,
 				 array, sizeof(*array) * tinfo->tidcnt))
 			ret = -EFAULT;

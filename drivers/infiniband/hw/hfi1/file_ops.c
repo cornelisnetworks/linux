@@ -1394,7 +1394,7 @@ static int user_exp_rcv_setup(struct hfi1_filedata *fd, unsigned long arg,
 			ret = -EFAULT;
 
 		if (ret)
-			hfi1_user_exp_rcv_invalid(fd, &tinfo);
+			hfi1_user_exp_rcv_invalid(fd, &tinfo, false);
 	}
 
 	return ret;
@@ -1456,7 +1456,7 @@ static int user_exp_rcv_invalid(struct hfi1_filedata *fd, unsigned long arg,
 	if (copy_from_user(&tinfo, (void __user *)arg, (sizeof(tinfo))))
 		return -EFAULT;
 
-	ret = hfi1_user_exp_rcv_invalid(fd, &tinfo);
+	ret = hfi1_user_exp_rcv_invalid(fd, &tinfo, false);
 	if (ret)
 		return ret;
 
