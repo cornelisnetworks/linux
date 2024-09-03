@@ -278,7 +278,24 @@ static int UVERBS_HANDLER(HFI1_METHOD_RECV_CTRL)(
 static int UVERBS_HANDLER(HFI1_METHOD_POLL_TYPE)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_ctxtdata *uctxt = fd->uctxt;
+	struct hfi1_poll_type_cmd cmd;
+	int ret;
+
+	if (!uctxt)
+		return -EINVAL;
+
+	ret = uverbs_copy_from(&cmd, attrs, HFI1_ATTR_POLL_TYPE_CMD);
+	if (ret)
+		return ret;
+
+	if (cmd.reserved != 0)
+		return -EINVAL;
+
+	uctxt->poll_type = (typeof(uctxt->poll_type))cmd.poll_type;
+
+	return 0;
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_ACK_EVENT)(
