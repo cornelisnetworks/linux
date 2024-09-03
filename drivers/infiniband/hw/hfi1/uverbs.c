@@ -4,6 +4,7 @@
  */
 
 #include "hfi.h"
+#include "user_sdma.h"
 #include "uverbs.h"
 #include "file_ops.h"
 
@@ -70,7 +71,41 @@ static int UVERBS_HANDLER(HFI1_METHOD_ASSIGN_CTXT)(
 static int UVERBS_HANDLER(HFI1_METHOD_CTXT_INFO)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_ctxtdata *uctxt = fd->uctxt;
+	struct hfi1_ctxt_info_rsp rsp = {};
+
+	if (!uctxt)
+		return -EINVAL;
+
+	rsp.runtime_flags = (((uctxt->flags >> HFI1_CAP_MISC_SHIFT) &
+				HFI1_CAP_MISC_MASK) << HFI1_CAP_USER_SHIFT) |
+			    HFI1_CAP_UGET_MASK(uctxt->flags, MASK) |
+			    HFI1_CAP_KGET_MASK(uctxt->flags, K2U);
+	/* adjust flag if this fd is not able to cache */
+	if (!fd->use_mn)
+		rsp.runtime_flags |= HFI1_CAP_TID_UNMAP; /* no caching */
+
+	rsp.num_active = hfi1_count_active_units();
+	rsp.unit = uctxt->dd->unit;
+	rsp.ctxt = uctxt->ctxt;
+	rsp.subctxt = fd->subctxt;
+	rsp.rcvtids = roundup(uctxt->egrbufs.alloced,
+			      uctxt->dd->rcv_entries.group_size) +
+		      uctxt->expected_count;
+	rsp.credits = uctxt->sc->credits;
+	rsp.numa_node = uctxt->numa_id;
+	rsp.rec_cpu = fd->rec_cpu_num;
+	rsp.send_ctxt = uctxt->sc->hw_context;
+
+	rsp.egrtids = uctxt->egrbufs.alloced;
+	rsp.rcvhdrq_cnt = get_hdrq_cnt(uctxt);
+	rsp.rcvhdrq_entsize = get_hdrqentsize(uctxt) << 2;
+	rsp.sdma_ring_size = fd->cq->nentries;
+	rsp.rcvegr_size = uctxt->egrbufs.rcvtid_size;
+
+	return uverbs_copy_to(attrs, HFI1_ATTR_CTXT_INFO_RSP, &rsp,
+			      sizeof(rsp));
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_USER_INFO)(
