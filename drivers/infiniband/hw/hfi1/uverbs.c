@@ -227,7 +227,33 @@ static int UVERBS_HANDLER(HFI1_METHOD_TID_UPDATE)(
 static int UVERBS_HANDLER(HFI1_METHOD_TID_FREE)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_tid_info tinfo = {};
+	struct hfi1_tid_free_cmd cmd;
+	struct hfi1_tid_free_rsp rsp = {};
+	int ret;
+
+	if (!fd->uctxt)
+		return -EINVAL;
+
+	ret = uverbs_copy_from(&cmd, attrs, HFI1_ATTR_TID_FREE_CMD);
+	if (ret)
+		return ret;
+
+	if (cmd.reserved != 0)
+		return -EINVAL;
+
+	tinfo.tidlist = cmd.tidlist;
+	tinfo.tidcnt = cmd.tidcnt;
+
+	ret = hfi1_user_exp_rcv_clear(fd, &tinfo);
+	if (!ret)
+		return ret;
+
+	rsp.tidcnt = tinfo.tidcnt;
+
+	return uverbs_copy_to(attrs, HFI1_ATTR_TID_FREE_RSP, &rsp,
+			      sizeof(rsp));
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_CREDIT_UPD)(
