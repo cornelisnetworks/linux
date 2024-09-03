@@ -120,7 +120,10 @@ static int UVERBS_HANDLER(HFI1_METHOD_TID_INVAL_READ)(
 static int UVERBS_HANDLER(HFI1_METHOD_GET_VERS)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_get_vers_rsp rsp = {};
+
+	rsp.version = HFI1_RDMA_USER_SWVERSION;
+	return uverbs_copy_to(attrs, HFI1_ATTR_GET_VERS_RSP, &rsp, sizeof(rsp));
 };
 
 DECLARE_UVERBS_NAMED_METHOD(HFI1_METHOD_ASSIGN_CTXT,

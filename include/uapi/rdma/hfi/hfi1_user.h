@@ -69,6 +69,7 @@
  * way. The driver must be the same for initialization to succeed.
  */
 #define HFI1_USER_SWMAJOR 6
+#define HFI1_RDMA_USER_SWMAJOR 10
 
 /*
  * Minor version differences are always compatible
@@ -78,6 +79,7 @@
  * cares, or it must abort after initialization reports the difference.
  */
 #define HFI1_USER_SWMINOR 3
+#define HFI1_RDMA_USER_SWMINOR 0
 
 /*
  * We will encode the major/minor inside a single 32bit version number.

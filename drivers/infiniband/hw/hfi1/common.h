@@ -136,6 +136,9 @@
 
 #define HFI1_USER_SWVERSION ((HFI1_USER_SWMAJOR << HFI1_SWMAJOR_SHIFT) | \
 			     HFI1_USER_SWMINOR)
+#define HFI1_RDMA_USER_SWVERSION \
+	((HFI1_RDMA_USER_SWMAJOR << HFI1_SWMAJOR_SHIFT) | \
+	 HFI1_RDMA_USER_SWMINOR)
 
 /*
  * The next set of defines are for packet headers, and chip register
