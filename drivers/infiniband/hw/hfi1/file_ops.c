@@ -65,8 +65,6 @@ static int allocate_ctxt(struct hfi1_filedata *fd,
 static void deallocate_ctxt(struct hfi1_ctxtdata *uctxt);
 static __poll_t poll_urgent(struct file *fp, struct poll_table_struct *pt);
 static __poll_t poll_next(struct file *fp, struct poll_table_struct *pt);
-static int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
-			  unsigned long events);
 static int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, u16 pkey);
 static int ctxt_reset(struct hfi1_ctxtdata *uctxt);
 static vm_fault_t vma_fault(struct vm_fault *vmf);
@@ -1612,8 +1610,8 @@ int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt, int start_stop)
  * User process then performs actions appropriate to bit having been
  * set, if desired, and checks again in future.
  */
-static int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
-			  unsigned long events)
+int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
+		   unsigned long events)
 {
 	int i;
 	struct hfi1_devdata *dd = uctxt->dd;

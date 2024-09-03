@@ -319,7 +319,19 @@ static int UVERBS_HANDLER(HFI1_METHOD_POLL_TYPE)(
 static int UVERBS_HANDLER(HFI1_METHOD_ACK_EVENT)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_ctxtdata *uctxt = fd->uctxt;
+	struct hfi1_ack_event_cmd cmd;
+	int ret;
+
+	if (!uctxt)
+		return -EINVAL;
+
+	ret = uverbs_copy_from(&cmd, attrs, HFI1_ATTR_ACK_EVENT_CMD);
+	if (ret)
+		return ret;
+
+	return user_event_ack(uctxt, fd->subctxt, cmd.event);
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_SET_PKEY)(
