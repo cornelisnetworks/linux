@@ -16,4 +16,24 @@ void hfi1_dealloc_filedata(struct hfi1_filedata *fdata);
 int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
 			const struct hfi1_assign_ctxt_cmd *uinfo);
 
+/*
+ * Types of memories mapped into user processes' space
+ */
+enum mmap_types {
+	PIO_BUFS = 1,
+	PIO_BUFS_SOP,
+	PIO_CRED,
+	RCV_HDRQ,
+	RCV_EGRBUF,
+	UREGS,
+	EVENTS,
+	STATUS,
+	RTAIL,
+	SUBCTXT_UREGS,
+	SUBCTXT_RCV_HDRQ,
+	SUBCTXT_EGRBUF,
+	SDMA_COMP,
+	RCV_RHEQ,
+};
+
 #endif /* _HFI1_FILE_OPS_H */

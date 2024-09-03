@@ -90,25 +90,6 @@ static const struct vm_operations_struct vm_ops = {
 };
 
 /*
- * Types of memories mapped into user processes' space
- */
-enum mmap_types {
-	PIO_BUFS = 1,
-	PIO_BUFS_SOP,
-	PIO_CRED,
-	RCV_HDRQ,
-	RCV_EGRBUF,
-	UREGS,
-	EVENTS,
-	STATUS,
-	RTAIL,
-	SUBCTXT_UREGS,
-	SUBCTXT_RCV_HDRQ,
-	SUBCTXT_EGRBUF,
-	SDMA_COMP
-};
-
-/*
  * Masks and offsets defining the mmap tokens
  */
 #define HFI1_MMAP_OFFSET_MASK   0xfffULL

@@ -11,6 +11,32 @@
 #define UVERBS_MODULE_NAME hfi1_uv
 #include <rdma/uverbs_named_ioctl.h>
 
+/*
+ * RDMA mmap token: <type> << <page offset>
+ *
+ * Expect type to be less than 256 (8 bits).  rdmavt reserves the bottom 256
+ * tokens for the driver.  A type of zero is always considered invalid.
+ * Types >= 256 are used for rdmavt's dynamic token generation.
+ */
+
+/* convert RDMA mmap token to type: the first 8 bits above a page */
+static inline u8 rdma_mmap_get_type(unsigned long token)
+{
+	return token >> PAGE_SHIFT;
+}
+
+/* calculate the token from an integer offset */
+static inline unsigned long rdma_mmap_token_i(u8 type, unsigned long offset)
+{
+	return ((unsigned long)type << PAGE_SHIFT) | offset_in_page(offset);
+}
+
+/* calculate the token from a pointer offset */
+static inline unsigned long rdma_mmap_token_p(u8 type, void *offset)
+{
+	return rdma_mmap_token_i(type, (unsigned long)offset);
+}
+
 int hfi1_alloc_ucontext(struct ib_ucontext *ucontext, struct ib_udata *udata)
 {
 	struct hfi1_devdata *dd = dd_from_ibdev(ucontext->device);
@@ -111,7 +137,55 @@ static int UVERBS_HANDLER(HFI1_METHOD_CTXT_INFO)(
 static int UVERBS_HANDLER(HFI1_METHOD_USER_INFO)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_ctxtdata *uctxt = fd->uctxt;
+	struct hfi1_user_info_rsp rsp = {};
+	struct hfi1_devdata *dd;
+	unsigned long offset;
+
+	if (!uctxt)
+		return -EINVAL;
+	dd = uctxt->dd;
+
+	rsp.hw_version = dd->revision;
+	rsp.sw_version = HFI1_USER_SWVERSION;
+	rsp.bthqp = RVT_KDETH_QP_PREFIX;
+	rsp.jkey = uctxt->jkey;
+	/*
+	 * If more than 64 contexts are enabled, the allocated credit return
+	 * will span two or three contiguous pages. Only the page containing
+	 * the context's credit return address is mapped.  Calculate the offset
+	 * in the proper page.
+	 */
+	offset = ((u64)uctxt->sc->hw_free -
+		  (u64)dd->cr_base[uctxt->numa_id].va) % PAGE_SIZE;
+	rsp.sc_credits_addr = rdma_mmap_token_i(PIO_CRED, offset);
+	rsp.pio_bufbase = rdma_mmap_token_p(PIO_BUFS, uctxt->sc->base_addr);
+	rsp.pio_bufbase_sop = rdma_mmap_token_p(PIO_BUFS_SOP,
+						uctxt->sc->base_addr);
+	rsp.rcvhdr_bufbase = rdma_mmap_token_p(RCV_HDRQ, uctxt->rcvhdrq);
+	rsp.rcvegr_bufbase = rdma_mmap_token_i(RCV_EGRBUF,
+					       uctxt->egrbufs.rcvtids[0].dma);
+	rsp.sdma_comp_bufbase = rdma_mmap_token_i(SDMA_COMP, 0);
+	/*
+	 * user regs are at
+	 * (RXE_PER_CONTEXT_USER + (ctxt * RXE_PER_CONTEXT_SIZE))
+	 */
+	rsp.user_regbase = rdma_mmap_token_i(UREGS, 0);
+	offset = offset_in_page((uctxt_offset(uctxt) + fd->subctxt) *
+				sizeof(*dd->events));
+	rsp.events_bufbase = rdma_mmap_token_i(EVENTS, offset);
+	rsp.status_bufbase = rdma_mmap_token_p(STATUS, dd->status);
+	if (HFI1_CAP_IS_USET(DMA_RTAIL))
+		rsp.rcvhdrtail_base = rdma_mmap_token_i(RTAIL, 0);
+	if (uctxt->subctxt_cnt) {
+		rsp.subctxt_uregbase = rdma_mmap_token_i(SUBCTXT_UREGS, 0);
+		rsp.subctxt_rcvhdrbuf = rdma_mmap_token_i(SUBCTXT_RCV_HDRQ, 0);
+		rsp.subctxt_rcvegrbuf = rdma_mmap_token_i(SUBCTXT_EGRBUF, 0);
+	}
+
+	return uverbs_copy_to(attrs, HFI1_ATTR_USER_INFO_RSP, &rsp,
+			      sizeof(rsp));
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_TID_UPDATE)(
