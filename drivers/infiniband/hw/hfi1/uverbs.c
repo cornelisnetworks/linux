@@ -11,6 +11,8 @@
 #define UVERBS_MODULE_NAME hfi1_uv
 #include <rdma/uverbs_named_ioctl.h>
 
+static const u64 zero8; /* 8 bytes of 0 */
+
 /*
  * RDMA mmap token: <type> << <page offset>
  *
@@ -272,7 +274,23 @@ static int UVERBS_HANDLER(HFI1_METHOD_CREDIT_UPD)(
 static int UVERBS_HANDLER(HFI1_METHOD_RECV_CTRL)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_ctxtdata *uctxt = fd->uctxt;
+	struct hfi1_recv_ctrl_cmd cmd;
+	int ret;
+
+	if (!uctxt)
+		return -EINVAL;
+
+	ret = uverbs_copy_from(&cmd, attrs, HFI1_ATTR_RECV_CTRL_CMD);
+	if (ret)
+		return ret;
+
+	/* verify small reserved array of u8s is zero */
+	if (memcmp(cmd.reserved, &zero8, sizeof(cmd.reserved)) != 0)
+		return -EINVAL;
+
+	return manage_rcvq(uctxt, fd->subctxt, cmd.start_stop);
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_POLL_TYPE)(

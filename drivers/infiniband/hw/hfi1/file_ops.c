@@ -69,7 +69,6 @@ static int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
 			  unsigned long events);
 static int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, u16 pkey);
 static int ctxt_reset(struct hfi1_ctxtdata *uctxt);
-static int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt, int arg);
 static vm_fault_t vma_fault(struct vm_fault *vmf);
 static long hfi1_file_ioctl(struct file *fp, unsigned int cmd,
 			    unsigned long arg);
@@ -1578,8 +1577,7 @@ int hfi1_set_uevent_bits(struct hfi1_pportdata *ppd, const int evtbit)
  * overflow conditions.  start_stop==1 re-enables, to be used to
  * re-init the software copy of the head register
  */
-static int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt,
-		       int start_stop)
+int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt, int start_stop)
 {
 	struct hfi1_devdata *dd = uctxt->dd;
 	unsigned int rcvctrl_op;
