@@ -1377,7 +1377,7 @@ static int user_exp_rcv_setup(struct hfi1_filedata *fd, unsigned long arg,
 	if (copy_from_user(&tinfo, (void __user *)arg, (sizeof(tinfo))))
 		return -EFAULT;
 
-	ret = hfi1_user_exp_rcv_setup(fd, &tinfo);
+	ret = hfi1_user_exp_rcv_setup(fd, &tinfo, false);
 	if (!ret) {
 		/*
 		 * Copy the number of tidlist entries we used

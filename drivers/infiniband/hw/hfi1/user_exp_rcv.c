@@ -244,7 +244,8 @@ static int pin_rcv_pages(struct hfi1_filedata *fd, struct tid_user_buf *tidbuf)
  *          used, move it to tid_full_list.
  */
 int hfi1_user_exp_rcv_setup(struct hfi1_filedata *fd,
-			    struct hfi1_tid_info *tinfo)
+			    struct hfi1_tid_info *tinfo,
+			    bool do_tidcnt_check)
 {
 	int ret = 0, need_group = 0, pinned;
 	struct hfi1_ctxtdata *uctxt = fd->uctxt;
@@ -437,6 +438,12 @@ unlock:
 			ret = -EBUSY;
 			goto fail_unprogram;
 		}
+	}
+
+	/* verify claimed incoming TID buffer has enough entries for result */
+	if (do_tidcnt_check && tinfo->tidcnt < tididx) {
+		ret = -ENOSPC;
+		goto fail_unprogram;
 	}
 
 	tinfo->tidcnt = tididx;
