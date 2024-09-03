@@ -259,7 +259,14 @@ static int UVERBS_HANDLER(HFI1_METHOD_TID_FREE)(
 static int UVERBS_HANDLER(HFI1_METHOD_CREDIT_UPD)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_ctxtdata *uctxt = fd->uctxt;
+
+	if (!uctxt)
+		return -EINVAL;
+	sc_return_credits(uctxt->sc);
+
+	return 0;
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_RECV_CTRL)(
