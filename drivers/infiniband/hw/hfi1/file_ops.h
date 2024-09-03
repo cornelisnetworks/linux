@@ -21,6 +21,7 @@ int manage_rcvq(struct hfi1_ctxtdata *uctxt, u16 subctxt, int start_stop);
 int user_event_ack(struct hfi1_ctxtdata *uctxt, u16 subctxt,
 		   unsigned long events);
 int set_ctxt_pkey(struct hfi1_ctxtdata *uctxt, u16 pkey);
+int ctxt_reset(struct hfi1_ctxtdata *uctxt);
 
 /*
  * Types of memories mapped into user processes' space

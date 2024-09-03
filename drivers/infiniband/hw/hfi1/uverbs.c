@@ -359,7 +359,13 @@ static int UVERBS_HANDLER(HFI1_METHOD_SET_PKEY)(
 static int UVERBS_HANDLER(HFI1_METHOD_CTXT_RESET)(
 	struct uverbs_attr_bundle *attrs)
 {
-	return -EOPNOTSUPP;
+	struct hfi1_filedata *fd = fd_from_attrs(attrs);
+	struct hfi1_ctxtdata *uctxt = fd->uctxt;
+
+	if (!uctxt)
+		return -EINVAL;
+
+	return ctxt_reset(uctxt);
 };
 
 static int UVERBS_HANDLER(HFI1_METHOD_TID_INVAL_READ)(
