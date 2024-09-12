@@ -322,30 +322,43 @@ static int hfi1_file_mmap(struct file *fp, struct vm_area_struct *vma)
 {
 	struct hfi1_filedata *fd = fp->private_data;
 	struct hfi1_ctxtdata *uctxt = fd->uctxt;
+	u64 token = vma->vm_pgoff << PAGE_SHIFT;
+	u16 ctxt;
+	u16 subctxt;
+	u8 type;
+
+	if (!is_valid_mmap(token) || !uctxt)
+		return -EINVAL;
+
+	ctxt = HFI1_MMAP_TOKEN_GET(CTXT, token);
+	subctxt = HFI1_MMAP_TOKEN_GET(SUBCTXT, token);
+	type = HFI1_MMAP_TOKEN_GET(TYPE, token);
+	if (ctxt != uctxt->ctxt || subctxt != fd->subctxt)
+		return -EINVAL;
+
+	return hfi1_do_mmap(fd, type, vma);
+}
+
+int hfi1_do_mmap(struct hfi1_filedata *fd, u8 type, struct vm_area_struct *vma)
+{
+	struct hfi1_ctxtdata *uctxt = fd->uctxt;
 	struct hfi1_devdata *dd;
 	unsigned long flags;
-	u64 token = vma->vm_pgoff << PAGE_SHIFT,
-		memaddr = 0;
+	u64 memaddr = 0;
 	void *memvirt = NULL;
 	dma_addr_t memdma = 0;
-	u8 subctxt, mapio = 0, vmf = 0, type;
+	u8 subctxt, mapio = 0, vmf = 0;
 	ssize_t memlen = 0;
 	int ret = 0;
 	u16 ctxt;
 
-	if (!is_valid_mmap(token) || !uctxt ||
-	    !(vma->vm_flags & VM_SHARED)) {
+	if (!uctxt || !(vma->vm_flags & VM_SHARED)) {
 		ret = -EINVAL;
 		goto done;
 	}
 	dd = uctxt->dd;
-	ctxt = HFI1_MMAP_TOKEN_GET(CTXT, token);
-	subctxt = HFI1_MMAP_TOKEN_GET(SUBCTXT, token);
-	type = HFI1_MMAP_TOKEN_GET(TYPE, token);
-	if (ctxt != uctxt->ctxt || subctxt != fd->subctxt) {
-		ret = -EINVAL;
-		goto done;
-	}
+	ctxt = uctxt->ctxt;
+	subctxt = fd->subctxt;
 
 	/*
 	 * vm_pgoff is used as a buffer selector cookie.  Always mmap from

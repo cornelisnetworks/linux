@@ -463,3 +463,19 @@ const struct uapi_definition hfi1_ib_defs[] = {
 	UAPI_DEF_CHAIN_OBJ_TREE_NAMED(HFI1_OBJECT_DV1),
 	{}
 };
+
+int hfi1_rdma_mmap(struct ib_ucontext *ucontext, struct vm_area_struct *vma)
+{
+	struct rvt_ucontext *rcontext = container_of(ucontext, struct rvt_ucontext, ibucontext);
+	struct hfi1_filedata *fd = rcontext->priv;
+	unsigned long token;
+	u8 type;
+
+	if (!fd)
+		return -EINVAL;
+
+	token = vma->vm_pgoff << PAGE_SHIFT;
+	type = rdma_mmap_get_type(token);
+
+	return hfi1_do_mmap(fd, type, vma);
+}

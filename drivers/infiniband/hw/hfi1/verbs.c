@@ -1846,6 +1846,7 @@ int hfi1_register_ib_device(struct hfi1_devdata *dd)
 						hfi1_comp_vect_mappings_lookup;
 	dd->verbs_dev.rdi.driver_f.alloc_ucontext = hfi1_alloc_ucontext;
 	dd->verbs_dev.rdi.driver_f.dealloc_ucontext = hfi1_dealloc_ucontext;
+	dd->verbs_dev.rdi.driver_f.mmap = hfi1_rdma_mmap;
 
 	/* completeion queue */
 	dd->verbs_dev.rdi.ibdev.num_comp_vectors = dd->comp_vect_possible_cpus;
