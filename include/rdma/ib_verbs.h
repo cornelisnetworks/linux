@@ -2686,6 +2686,8 @@ struct ib_device_ops {
 	 * Everyone else relies on Linux memory management model.
 	 */
 	int (*get_numa_node)(struct ib_device *dev);
+	/* subscribe to file ops write_iter callback */
+	ssize_t (*write_iter)(struct ib_ucontext *context, struct iov_iter *from);
 
 	/**
 	 * add_sub_dev - Add a sub IB device

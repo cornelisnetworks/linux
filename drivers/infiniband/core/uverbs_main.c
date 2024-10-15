@@ -713,6 +713,26 @@ out:
 	return ret;
 }
 
+static ssize_t ib_uverbs_write_iter(struct kiocb *kiocb, struct iov_iter *from)
+{
+	struct ib_uverbs_file *file = kiocb->ki_filp->private_data;
+	struct ib_ucontext *ucontext;
+	ssize_t ret = -EOPNOTSUPP;
+	int srcu_key;
+
+	srcu_key = srcu_read_lock(&file->device->disassociate_srcu);
+	ucontext = ib_uverbs_get_ucontext_file(file);
+	if (IS_ERR(ucontext)) {
+		ret = PTR_ERR(ucontext);
+		goto out;
+	}
+	if (ucontext->device->ops.write_iter)
+		ret = ucontext->device->ops.write_iter(ucontext, from);
+out:
+	srcu_read_unlock(&file->device->disassociate_srcu, srcu_key);
+	return ret;
+}
+
 /*
  * The VMA has been dup'd, initialize the vm_private_data with a new tracking
  * struct
@@ -1031,6 +1051,7 @@ static const struct file_operations uverbs_fops = {
 	.release = ib_uverbs_close,
 	.unlocked_ioctl = ib_uverbs_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
+	.write_iter = ib_uverbs_write_iter,
 };
 
 static const struct file_operations uverbs_mmap_fops = {
@@ -1041,6 +1062,7 @@ static const struct file_operations uverbs_mmap_fops = {
 	.release = ib_uverbs_close,
 	.unlocked_ioctl = ib_uverbs_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
+	.write_iter = ib_uverbs_write_iter,
 };
 
 static int ib_uverbs_get_nl_info(struct ib_device *ibdev, void *client_data,
