@@ -479,3 +479,12 @@ int hfi1_rdma_mmap(struct ib_ucontext *ucontext, struct vm_area_struct *vma)
 
 	return hfi1_do_mmap(fd, type, vma);
 }
+
+ssize_t hfi1_uverbs_write_iter(struct ib_ucontext *ucontext,
+			       struct iov_iter *from)
+{
+	struct rvt_ucontext *rcontext = container_of(ucontext, struct rvt_ucontext, ibucontext);
+	struct hfi1_filedata *fd = rcontext->priv;
+
+	return hfi1_do_write_iter(fd, from);
+}

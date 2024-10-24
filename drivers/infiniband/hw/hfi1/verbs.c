@@ -1739,6 +1739,7 @@ static const struct ib_device_ops hfi1_dev_ops = {
 	/* keep process mad in the driver */
 	.process_mad = hfi1_process_mad,
 	.rdma_netdev_get_params = hfi1_ipoib_rn_get_params,
+	.write_iter = hfi1_uverbs_write_iter,
 };
 
 /**

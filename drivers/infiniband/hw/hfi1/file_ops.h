@@ -16,6 +16,7 @@ void hfi1_dealloc_filedata(struct hfi1_filedata *fdata);
 int hfi1_do_assign_ctxt(struct hfi1_filedata *fd,
 			const struct hfi1_assign_ctxt_cmd *uinfo);
 int hfi1_do_mmap(struct hfi1_filedata *fd, u8 type, struct vm_area_struct *vma);
+ssize_t hfi1_do_write_iter(struct hfi1_filedata *fd, struct iov_iter *from);
 
 /*
  * Types of memories mapped into user processes' space

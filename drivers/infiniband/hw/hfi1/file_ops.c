@@ -259,9 +259,8 @@ static long hfi1_file_ioctl(struct file *fp, unsigned int cmd,
 	return ret;
 }
 
-static ssize_t hfi1_write_iter(struct kiocb *kiocb, struct iov_iter *from)
+ssize_t hfi1_do_write_iter(struct hfi1_filedata *fd, struct iov_iter *from)
 {
-	struct hfi1_filedata *fd = kiocb->ki_filp->private_data;
 	struct hfi1_user_sdma_pkt_q *pq;
 	struct hfi1_user_sdma_comp_q *cq = fd->cq;
 	int done = 0, reqs = 0;
@@ -305,6 +304,13 @@ static ssize_t hfi1_write_iter(struct kiocb *kiocb, struct iov_iter *from)
 
 	srcu_read_unlock(&fd->pq_srcu, idx);
 	return reqs;
+}
+
+static ssize_t hfi1_write_iter(struct kiocb *kiocb, struct iov_iter *from)
+{
+	struct hfi1_filedata *fd = kiocb->ki_filp->private_data;
+
+	return hfi1_do_write_iter(fd, from);
 }
 
 static inline void mmap_cdbg(u16 ctxt, u8 subctxt, u8 type, u8 mapio, u8 vmf,
