@@ -1,6 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
+/* SPDX-License-Identifier: GPL-2.0 or BSD-3-Clause */
 /*
- * Copyright(c) 2020-2023 Cornelis Networks, Inc.
+ * Copyright(c) 2024 Tactical Computing Labs, LLC
+ * Copyright(c) 2020 Cornelis Networks, Inc.
  * Copyright(c) 2015-2020 Intel Corporation.
  */
 
@@ -1378,6 +1379,8 @@ struct hfi1_devdata {
 #define PT_INVALID        3
 
 struct tid_rb_node;
+struct mmu_rb_node;
+struct mmu_rb_handler;
 
 /* Private data for file operations */
 struct hfi1_filedata {
@@ -2175,7 +2178,11 @@ struct pci_dev *get_pci_dev(struct rvt_dev_info *rdi);
  */
 static inline void flush_wc(void)
 {
+#if defined(CONFIG_X86_64)
 	asm volatile("sfence" : : : "memory");
+#elif defined(CONFIG_RISCV)
+	asm volatile("fence rw,rw" : : : "memory");
+#endif
 }
 
 void handle_eflags(struct hfi1_packet *packet);
@@ -2425,7 +2432,8 @@ static inline bool hfi1_need_drop(struct hfi1_devdata *dd)
 int hfi1_tempsense_rd(struct hfi1_devdata *dd, struct hfi1_temp *temp);
 
 #define DD_DEV_ENTRY(dd)       __string(dev, dev_name(&(dd)->pcidev->dev))
-#define DD_DEV_ASSIGN(dd)      __assign_str(dev)
+//#define DD_DEV_ASSIGN(dd)      __assign_str(dev, dev_name(&(dd)->pcidev->dev))
+#define DD_DEV_ASSIGN(dd)      __string(dev, dev_name(&(dd)->pcidev->dev))
 
 static inline void hfi1_update_ah_attr(struct ib_device *ibdev,
 				       struct rdma_ah_attr *attr)

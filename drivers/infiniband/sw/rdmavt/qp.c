@@ -1,5 +1,7 @@
-// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+// SPDX-License-Identifier: GPL-2.0 or BSD-3-Clause
 /*
+ * Copyright(c) 2024 Tactical Computing Labs, LLC
+ * Copyright(c) 2024 Cornelis Networks, Inc. 
  * Copyright(c) 2016 - 2020 Intel Corporation.
  */
 
@@ -85,19 +87,25 @@ EXPORT_SYMBOL(ib_rvt_state_ops);
 static int rvt_wss_llc_size(void)
 {
 	/* assume that the boot CPU value is universal for all CPUs */
+#if defined(CONFIG_X86_64)
 	return boot_cpu_data.x86_cache_size;
+#elif defined(CONFIG_RISCV)
+	return 64;
+#endif
 }
 
 /* platform specific: cacheless copy */
 static void cacheless_memcpy(void *dst, void *src, size_t n)
 {
+#if defined(CONFIG_X86_64)
 	/*
 	 * Use the only available X64 cacheless copy.  Add a __user cast
 	 * to quiet sparse.  The src agument is already in the kernel so
 	 * there are no security issues.  The extra fault recovery machinery
 	 * is not invoked.
 	 */
-	__copy_user_nocache(dst, (void __user *)src, n);
+	__copy_user_nocache(dst, (void __user *)src, n, 0);
+#endif
 }
 
 void rvt_wss_exit(struct rvt_dev_info *rdi)
@@ -464,6 +472,8 @@ void rvt_qp_exit(struct rvt_dev_info *rdi)
 	if (qps_inuse)
 		rvt_pr_err(rdi, "QP memory leak! %u still in use\n",
 			   qps_inuse);
+	if (!rdi->qp_dev)
+		return;
 
 	kfree(rdi->qp_dev->qp_table);
 	free_qpn_table(&rdi->qp_dev->qpn_table);
@@ -2038,7 +2048,7 @@ static int rvt_post_one_wr(struct rvt_qp *qp,
 	wqe = rvt_get_swqe_ptr(qp, qp->s_head);
 
 	/* cplen has length from above */
-	memcpy(&wqe->ud_wr, wr, cplen);
+	memcpy(&wqe->wr, wr, cplen);
 
 	wqe->length = 0;
 	j = 0;

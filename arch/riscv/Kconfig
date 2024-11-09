@@ -443,6 +443,25 @@ config SMP
 
 	  If you don't know what to do here, say N.
 
+config HIGHMEM
+	bool "High Memory Support"
+	depends on MMU
+	select KMAP_LOCAL
+	select KMAP_LOCAL_NON_LINEAR_PTE_ARRAY
+	help
+	  The address space of ARM processors is only 4 Gigabytes large
+	  and it has to accommodate user address space, kernel address
+	  space as well as some memory mapped IO. That means that, if you
+	  have a large amount of physical memory and/or IO, not all of the
+	  memory can be "permanently mapped" by the kernel. The physical
+	  memory that is not permanently mapped is called "high memory".
+
+	  Depending on the selected kernel/user memory split, minimum
+	  vmalloc space and actual amount of RAM, you may not need this
+	  option which should result in a slightly faster kernel.
+
+	  If unsure, say n.
+
 config SCHED_MC
 	bool "Multi-core scheduler support"
 	depends on SMP

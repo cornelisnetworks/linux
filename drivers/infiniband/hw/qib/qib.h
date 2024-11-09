@@ -1,6 +1,7 @@
 #ifndef _QIB_KERNEL_H
 #define _QIB_KERNEL_H
 /*
+ * Copyright(c) 2024 Tactical Computing Labs, LLC
  * Copyright (c) 2012 - 2017 Intel Corporation.  All rights reserved.
  * Copyright (c) 2006 - 2012 QLogic Corporation. All rights reserved.
  * Copyright (c) 2003, 2004, 2005, 2006 PathScale, Inc. All rights reserved.
@@ -321,7 +322,7 @@ struct qib_verbs_txreq {
  * These 7 values (SDR, DDR, and QDR may be ORed for auto-speed
  * negotiation) are used for the 3rd argument to path_f_set_ib_cfg
  * with cmd QIB_IB_CFG_SPD_ENB, by direct calls or via sysfs.  They
- * are also the possible values for qib_link_speed_enabled and active
+ * are also the the possible values for qib_link_speed_enabled and active
  * The values were chosen to match values used within the IB spec.
  */
 #define QIB_IB_SDR 1
@@ -1359,6 +1360,7 @@ static inline u32 qib_get_rcvhdrtail(const struct qib_ctxtdata *rcd)
  * sysfs interface.
  */
 
+extern const char ib_qib_version[];
 extern const struct attribute_group qib_attr_group;
 extern const struct attribute_group *qib_attr_port_groups[];
 
@@ -1402,6 +1404,8 @@ static inline void qib_flush_wc(void)
 {
 #if defined(CONFIG_X86_64)
 	asm volatile("sfence" : : : "memory");
+#elif defined(CONFIG_RISCV)
+	asm volatile("fence rw,rw" : : : "memory");
 #else
 	wmb(); /* no reorder around wc flush */
 #endif
