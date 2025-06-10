@@ -2250,7 +2250,6 @@ struct ib_port_data {
 
 /* rdma netdev type - specifies protocol type */
 enum rdma_netdev_t {
-	RDMA_NETDEV_OPA_VNIC,
 	RDMA_NETDEV_IPOIB,
 };
 
@@ -2264,11 +2263,6 @@ struct rdma_netdev {
 	u32		   port_num;
 	int                mtu;
 
-	/*
-	 * cleanup function must be specified.
-	 * FIXME: This is only used for OPA_VNIC and that usage should be
-	 * removed too.
-	 */
 	void (*free_rdma_netdev)(struct net_device *netdev);
 
 	/* control functions */
