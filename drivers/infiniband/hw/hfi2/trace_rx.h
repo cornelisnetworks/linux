@@ -1,0 +1,171 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
+/*
+ * Copyright(c) 2015 - 2018 Intel Corporation.
+ */
+
+#if !defined(__HFI2_TRACE_RX_H) || defined(TRACE_HEADER_MULTI_READ)
+#define __HFI2_TRACE_RX_H
+
+#include <linux/tracepoint.h>
+#include <linux/trace_seq.h>
+
+#include "hfi2.h"
+
+#define tidtype_name(type) { PT_##type, #type }
+#define show_tidtype(type)                   \
+__print_symbolic(type,                       \
+	tidtype_name(EXPECTED),              \
+	tidtype_name(EAGER))
+
+#undef TRACE_SYSTEM
+#define TRACE_SYSTEM hfi2_rx
+
+TRACE_EVENT(hfi2_rcvhdr,
+	    TP_PROTO(struct hfi2_packet *packet),
+	    TP_ARGS(packet),
+	    TP_STRUCT__entry(DD_DEV_ENTRY(packet->rcd->dd)
+			     __field(u64, eflags)
+			     __field(u32, ctxt)
+			     __field(u32, etype)
+			     __field(u32, hlen)
+			     __field(u32, tlen)
+			     __field(u32, updegr)
+			     __field(u32, etail)
+			     ),
+	     TP_fast_assign(DD_DEV_ASSIGN(packet->rcd->dd);
+			    __entry->eflags = packet->err_flags;
+			    __entry->ctxt = packet->rcd->ctxt;
+			    __entry->etype = packet->etype;
+			    __entry->hlen = packet->hlen;
+			    __entry->tlen = packet->tlen;
+			    __entry->updegr = packet->updegr;
+			    __entry->etail = packet->egr_index;
+			    ),
+	     TP_printk(
+		"[%s] ctxt %d eflags 0x%llx etype %d,%s hlen %d tlen %d updegr %d etail %d",
+		__get_str(dev),
+		__entry->ctxt,
+		__entry->eflags,
+		__entry->etype, show_packettype(__entry->etype),
+		__entry->hlen,
+		__entry->tlen,
+		__entry->updegr,
+		__entry->etail
+		)
+);
+
+TRACE_EVENT(hfi2_receive_interrupt,
+	    TP_PROTO(struct hfi2_devdata *dd, struct hfi2_ctxtdata *rcd),
+	    TP_ARGS(dd, rcd),
+	    TP_STRUCT__entry(DD_DEV_ENTRY(dd)
+			     __field(u32, ctxt)
+			     __field(u8, slow_path)
+			     __field(u8, dma_rtail)
+			     ),
+	    TP_fast_assign(DD_DEV_ASSIGN(dd);
+			__entry->ctxt = rcd->ctxt;
+			__entry->slow_path = hfi2_is_slowpath(rcd);
+			__entry->dma_rtail = get_dma_rtail_setting(rcd);
+			),
+	    TP_printk("[%s] ctxt %d SlowPath: %d DmaRtail: %d",
+		      __get_str(dev),
+		      __entry->ctxt,
+		      __entry->slow_path,
+		      __entry->dma_rtail
+		      )
+);
+
+TRACE_EVENT(hfi2_mmu_invalidate,
+	    TP_PROTO(unsigned int ctxt, u16 subctxt, const char *type,
+		     unsigned long start, unsigned long end),
+	    TP_ARGS(ctxt, subctxt, type, start, end),
+	    TP_STRUCT__entry(
+			     __field(unsigned int, ctxt)
+			     __field(u16, subctxt)
+			     __string(type, type)
+			     __field(unsigned long, start)
+			     __field(unsigned long, end)
+			     ),
+	    TP_fast_assign(
+			__entry->ctxt = ctxt;
+			__entry->subctxt = subctxt;
+			__assign_str(type);
+			__entry->start = start;
+			__entry->end = end;
+	    ),
+	    TP_printk("[%3u:%02u] MMU Invalidate (%s) 0x%lx - 0x%lx",
+		      __entry->ctxt,
+		      __entry->subctxt,
+		      __get_str(type),
+		      __entry->start,
+		      __entry->end
+		      )
+	    );
+
+#define SNOOP_PRN \
+	"slid %.4x dlid %.4x qpn 0x%.6x opcode 0x%.2x,%s " \
+	"svc lvl %d pkey 0x%.4x [header = %d bytes] [data = %d bytes]"
+
+TRACE_EVENT(snoop_capture,
+	    TP_PROTO(struct hfi2_devdata *dd,
+		     int hdr_len,
+		     struct ib_header *hdr,
+		     int data_len,
+		     void *data),
+	    TP_ARGS(dd, hdr_len, hdr, data_len, data),
+	    TP_STRUCT__entry(
+			     DD_DEV_ENTRY(dd)
+			     __field(u16, slid)
+			     __field(u16, dlid)
+			     __field(u32, qpn)
+			     __field(u8, opcode)
+			     __field(u8, sl)
+			     __field(u16, pkey)
+			     __field(u32, hdr_len)
+			     __field(u32, data_len)
+			     __field(u8, lnh)
+			     __dynamic_array(u8, raw_hdr, hdr_len)
+			     __dynamic_array(u8, raw_pkt, data_len)
+			     ),
+	    TP_fast_assign(
+		struct ib_other_headers *ohdr;
+
+		__entry->lnh = (u8)(be16_to_cpu(hdr->lrh[0]) & 3);
+		if (__entry->lnh == HFI2_LRH_BTH)
+		ohdr = &hdr->u.oth;
+		else
+		ohdr = &hdr->u.l.oth;
+		DD_DEV_ASSIGN(dd);
+		__entry->slid = be16_to_cpu(hdr->lrh[3]);
+		__entry->dlid = be16_to_cpu(hdr->lrh[1]);
+		__entry->qpn = be32_to_cpu(ohdr->bth[1]) & RVT_QPN_MASK;
+		__entry->opcode = (be32_to_cpu(ohdr->bth[0]) >> 24) & 0xff;
+		__entry->sl = (u8)(be16_to_cpu(hdr->lrh[0]) >> 4) & 0xf;
+		__entry->pkey =	be32_to_cpu(ohdr->bth[0]) & 0xffff;
+		__entry->hdr_len = hdr_len;
+		__entry->data_len = data_len;
+		memcpy(__get_dynamic_array(raw_hdr), hdr, hdr_len);
+		memcpy(__get_dynamic_array(raw_pkt), data, data_len);
+		),
+	    TP_printk(
+		"[%s] " SNOOP_PRN,
+		__get_str(dev),
+		__entry->slid,
+		__entry->dlid,
+		__entry->qpn,
+		__entry->opcode,
+		show_ib_opcode(__entry->opcode),
+		__entry->sl,
+		__entry->pkey,
+		__entry->hdr_len,
+		__entry->data_len
+		)
+);
+
+#endif /* __HFI2_TRACE_RX_H */
+
+#undef TRACE_INCLUDE_PATH
+#undef TRACE_INCLUDE_FILE
+#define TRACE_INCLUDE_PATH .
+#define TRACE_INCLUDE_FILE trace_rx
+#include <trace/define_trace.h>
