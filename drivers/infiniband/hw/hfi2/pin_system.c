@@ -201,7 +201,7 @@ static struct sdma_mmu_node *add_system_pinning(struct user_sdma_request *req,
 	struct sdma_mmu_node *e;
 	int ret;
 
-	e = kzalloc_obj(e, GFP_KERNEL);
+	e = kzalloc_obj(*e, GFP_KERNEL);
 	if (!e)
 		return ERR_PTR(-ENOMEM);
 
