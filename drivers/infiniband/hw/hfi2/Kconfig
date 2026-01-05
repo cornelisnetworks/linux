@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config INFINIBAND_HFI2
+	tristate "Cornelis OPX Gen1 support"
+	depends on X86_64 && INFINIBAND_RDMAVT && I2C && !UML
+	depends on PCI_IOV
+	select MMU_NOTIFIER
+	select CRC32
+	select I2C_ALGOBIT
+	help
+	This is a low-level driver for Cornelis OPX Gen1 adapter.
+config HFI2_DEBUG_SDMA_ORDER
+	bool "HFI2 SDMA Order debug"
+	depends on INFINIBAND_HFI2
+	default n
+	help
+	This is a debug flag to test for out of order
+	sdma completions for unit testing
+config HFI2_SDMA_VERBOSITY
+	bool "Config SDMA Verbosity"
+	depends on INFINIBAND_HFI2
+	default n
+	help
+	This is a configuration flag to enable verbose
+	SDMA debug
