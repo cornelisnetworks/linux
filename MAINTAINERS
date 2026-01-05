@@ -11120,8 +11120,14 @@ F:	include/uapi/linux/cciss*.h
 HFI1 DRIVER
 M:	Dennis Dalessandro <dennis.dalessandro@cornelisnetworks.com>
 L:	linux-rdma@vger.kernel.org
-S:	Supported
+S:	Obsolete
 F:	drivers/infiniband/hw/hfi1
+
+HFI2 DRIVER
+M:	Dennis Dalessandro <dennis.dalessandro@cornelisnetworks.com>
+L:	linux-rdma@vger.kernel.org
+S:	Supported
+F:	drivers/infiniband/hw/hfi2
 
 HFS FILESYSTEM
 M:	Viacheslav Dubeyko <slava@dubeyko.com>
