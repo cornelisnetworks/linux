@@ -92,8 +92,18 @@ __hfi2_trace_def(TID);
 __hfi2_trace_def(MMU);
 __hfi2_trace_def(IOCTL);
 
+/*
+ * Check the tracepoint's static key via trace_hfi2_<which>_enabled() before
+ * calling into __hfi2_trace_<which>(), which unconditionally sets up a
+ * va_list and formats into a stack buffer. Without this check, callers pay
+ * that cost on every call regardless of whether the tracepoint is enabled,
+ * defeating the zero-overhead design of tracepoints.
+ */
 #define hfi2_cdbg(which, fmt, ...) \
-	__hfi2_trace_##which(__func__, fmt, ##__VA_ARGS__)
+	do { \
+		if (trace_hfi2_##which##_enabled()) \
+			__hfi2_trace_##which(__func__, fmt, ##__VA_ARGS__); \
+	} while (0)
 
 #define hfi2_dbg(fmt, ...) \
 	hfi2_cdbg(DEBUG, fmt, ##__VA_ARGS__)
