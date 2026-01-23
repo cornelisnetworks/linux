@@ -10,6 +10,7 @@
 #include <linux/io.h>
 #include <linux/sched/mm.h>
 #include <linux/bitmap.h>
+#include <linux/dma-direct.h>
 
 #include <rdma/ib.h>
 
@@ -403,13 +404,21 @@ static int hfi1_file_mmap(struct file *fp, struct vm_area_struct *vma)
 		memdma = uctxt->rcvhdrq_dma;
 		break;
 	case RCV_EGRBUF: {
-		unsigned long vm_start_save;
-		unsigned long vm_end_save;
+		unsigned long addr;
 		int i;
 		/*
 		 * The RcvEgr buffer need to be handled differently
 		 * as multiple non-contiguous pages need to be mapped
 		 * into the user process.
+		 *
+		 * Kernel 6.16 added pfnmap_track_ctx tracking to VMAs.
+		 * When remap_pfn_range() (called by dma_mmap_coherent())
+		 * maps the entire VMA, it sets this tracking context.
+		 * A second call fails with -EINVAL. Use vmf_insert_pfn()
+		 * per-page instead, which avoids the tracking issue.
+		 * vmf_insert_pfn() is used instead of vm_insert_page()
+		 * because DMA coherent pages may have special page types
+		 * that vm_insert_page() rejects.
 		 */
 		memlen = uctxt->egrbufs.size;
 		if ((vma->vm_end - vma->vm_start) != memlen) {
@@ -422,35 +431,30 @@ static int hfi1_file_mmap(struct file *fp, struct vm_area_struct *vma)
 			ret = -EPERM;
 			goto done;
 		}
+
+		vm_flags_set(vma, VM_PFNMAP | VM_DONTEXPAND);
 		vm_flags_clear(vma, VM_MAYWRITE);
-		/*
-		 * Mmap multiple separate allocations into a single vma.  From
-		 * here, dma_mmap_coherent() calls dma_direct_mmap(), which
-		 * requires the mmap to exactly fill the vma starting at
-		 * vma_start.  Adjust the vma start and end for each eager
-		 * buffer segment mapped.  Restore the originals when done.
-		 */
-		vm_start_save = vma->vm_start;
-		vm_end_save = vma->vm_end;
-		vma->vm_end = vma->vm_start;
-		for (i = 0 ; i < uctxt->egrbufs.numbufs; i++) {
-			memlen = uctxt->egrbufs.buffers[i].len;
-			memvirt = uctxt->egrbufs.buffers[i].addr;
-			memdma = uctxt->egrbufs.buffers[i].dma;
-			vma->vm_end += memlen;
-			mmap_cdbg(ctxt, subctxt, type, mapio, vmf, memaddr,
-				  memvirt, memdma, memlen, vma);
-			ret = dma_mmap_coherent(&dd->pcidev->dev, vma,
-						memvirt, memdma, memlen);
-			if (ret < 0) {
-				vma->vm_start = vm_start_save;
-				vma->vm_end = vm_end_save;
-				goto done;
+
+		addr = vma->vm_start;
+		for (i = 0; i < uctxt->egrbufs.numbufs; i++) {
+			unsigned long buf_len = uctxt->egrbufs.buffers[i].len;
+			dma_addr_t dma = uctxt->egrbufs.buffers[i].dma;
+			phys_addr_t pa = dma_to_phys(&dd->pcidev->dev, dma);
+			unsigned long pfn = PHYS_PFN(pa);
+			unsigned long end = addr + buf_len;
+
+			while (addr < end) {
+				vm_fault_t vmf_ret;
+
+				vmf_ret = vmf_insert_pfn(vma, addr, pfn);
+				if (vmf_ret & VM_FAULT_ERROR) {
+					ret = -EFAULT;
+					goto done;
+				}
+				addr += PAGE_SIZE;
+				pfn++;
 			}
-			vma->vm_start += memlen;
 		}
-		vma->vm_start = vm_start_save;
-		vma->vm_end = vm_end_save;
 		ret = 0;
 		goto done;
 	}
