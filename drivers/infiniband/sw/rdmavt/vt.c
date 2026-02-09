@@ -201,7 +201,7 @@ static int rvt_query_pkey(struct ib_device *ibdev, u32 port_num, u16 index,
 	if (index >= rvt_get_npkeys(rdi))
 		return -EINVAL;
 
-	*pkey = rvt_get_pkey(rdi, port_index, index);
+	*pkey = cpu_to_be16(rvt_get_pkey(rdi, port_index, index));
 	return 0;
 }
 
