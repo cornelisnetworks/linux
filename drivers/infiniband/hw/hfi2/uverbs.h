@@ -16,10 +16,12 @@
  */
 struct hfi2_user_mmap_entry {
 	struct rdma_user_mmap_entry rdma_entry;
+	struct list_head list;
 	u64 address;
 	void *memvirt;
 	dma_addr_t memdma;
 	u8 mmap_flag;
+	bool dma;
 };
 
 static inline struct hfi2_user_mmap_entry *

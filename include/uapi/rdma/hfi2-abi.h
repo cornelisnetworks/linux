@@ -13,7 +13,7 @@
 /* Increment this value if any changes that break userspace ABI
  * compatibility are made.
  */
-#define HFI2_UVERBS_ABI_VERSION 2
+#define HFI2_UVERBS_ABI_VERSION 3
 
 /*
  * Set of HW and driver capability/feature bits.
@@ -248,17 +248,6 @@ struct hfi2_ctxt_info {
 	__u16 sdma_ring_size; /* number of entries in SDMA request ring */
 };
 
-struct hfi1_tid_info {
-	/* virtual address of first page in transfer */
-	__aligned_u64 vaddr;
-	/* pointer to tid array. this array is big enough */
-	__aligned_u64 tidlist;
-	/* number of tids programmed by this request */
-	__u32 tidcnt;
-	/* length of transfer buffer programmed by this request */
-	__u32 length;
-};
-
 #define HFI2_TID_UPDATE_FLAGS_MEMINFO_MASK 0xfUL
 #define HFI2_TID_UPDATE_FLAGS_RESERVED_MASK \
 	(~(__u64)(HFI2_TID_UPDATE_FLAGS_MEMINFO_MASK))
@@ -398,6 +387,7 @@ enum hfi2_methods_dv1 {
 	HFI2_METHOD_GET_VERS,
 	HFI2_METHOD_PIN_STATS,
 	HFI2_METHOD_CREATE_SDMA_FD,
+	HFI2_METHOD_QUERY_EGR_MMAP,
 };
 
 /*
@@ -471,7 +461,7 @@ struct hfi2_user_info_rsp {
 	 * protocol packet from standard IB packets.
 	 */
 	__u32 bthqp;
-	/* PIO credit return address */
+	/* PIO credit return mmap offset */
 	__aligned_u64 sc_credits_addr;
 	/*
 	 * Base address of write-only pio buffers for this process.
@@ -485,7 +475,6 @@ struct hfi2_user_info_rsp {
 	__aligned_u64 pio_bufbase;
 	/* address where receive buffer queue is mapped into */
 	__aligned_u64 rcvhdr_bufbase;
-	/* base address of Eager receive buffers. */
 	__aligned_u64 rcvegr_bufbase;
 	/* base address of SDMA completion ring */
 	__aligned_u64 sdma_comp_bufbase;
@@ -513,6 +502,8 @@ struct hfi2_user_info_rsp {
 	__aligned_u64 subctxt_rcvhdrbuf;
 	/* receive header error queue */
 	__aligned_u64 rheq_bufbase;
+	__u32 sc_credits_offset;
+	__u32 events_offset;
 };
 
 /*
@@ -684,6 +675,29 @@ struct hfi2_pin_stats_rsp {
  */
 enum hfi2_attrs_create_sdma_fd {
 	HFI2_ATTR_SDMA_FD_RSP = (1U << UVERBS_ID_NS_SHIFT),
+};
+
+enum hfi2_attrs_query_egr_mmap {
+	HFI2_ATTR_QUERY_EGR_MMAP_CMD = (1U << UVERBS_ID_NS_SHIFT),
+	HFI2_ATTR_QUERY_EGR_MMAP_RSP,
+	HFI2_ATTR_QUERY_EGR_MMAP_SEGMENTS,
+};
+
+struct hfi2_query_egr_mmap_cmd {
+	__u32 first_segment;
+	__u32 reserved;
+};
+
+struct hfi2_query_egr_mmap_rsp {
+	__u32 total_segments;
+	__u32 returned_segments;
+	__aligned_u64 total_size;
+};
+
+struct hfi2_egr_mmap_segment {
+	__aligned_u64 offset;
+	__aligned_u64 length;
+	__aligned_u64 mmap_offset;
 };
 
 #endif /* _LINIUX_HFI2_USER_H */

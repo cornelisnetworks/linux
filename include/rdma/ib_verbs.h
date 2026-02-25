@@ -3162,6 +3162,9 @@ void ib_set_device_ops(struct ib_device *device,
 int rdma_user_mmap_io(struct ib_ucontext *ucontext, struct vm_area_struct *vma,
 		      unsigned long pfn, unsigned long size, pgprot_t prot,
 		      struct rdma_user_mmap_entry *entry);
+int rdma_user_mmap_entry_associate_vma(struct ib_ucontext *ucontext,
+				       struct vm_area_struct *vma,
+				       struct rdma_user_mmap_entry *entry);
 int rdma_user_mmap_entry_insert(struct ib_ucontext *ucontext,
 				struct rdma_user_mmap_entry *entry,
 				size_t length);
@@ -3196,6 +3199,14 @@ static inline int rdma_user_mmap_io(struct ib_ucontext *ucontext,
 				    unsigned long pfn, unsigned long size,
 				    pgprot_t prot,
 				    struct rdma_user_mmap_entry *entry)
+{
+	return -EINVAL;
+}
+
+static inline int
+rdma_user_mmap_entry_associate_vma(struct ib_ucontext *ucontext,
+				   struct vm_area_struct *vma,
+				   struct rdma_user_mmap_entry *entry)
 {
 	return -EINVAL;
 }

@@ -35,10 +35,14 @@ static int hfi2_mmap_entry_insert(struct ib_ucontext *ucontext,
 	if (!entry)
 		return -ENOMEM;
 
+	INIT_LIST_HEAD(&entry->list);
 	entry->address = address;
 	entry->memvirt = memvirt;
 	entry->memdma = memdma;
 	entry->mmap_flag = type;
+	entry->dma = memvirt && (type == PIO_CRED || type == RCV_HDRQ ||
+				  type == RCV_EGRBUF || type == RTAIL ||
+				  type == RCV_RHEQ);
 
 	ret = rdma_user_mmap_entry_insert(ucontext, &entry->rdma_entry, length);
 	if (ret) {
@@ -46,12 +50,59 @@ static int hfi2_mmap_entry_insert(struct ib_ucontext *ucontext,
 		return ret;
 	}
 
-	*offset = rdma_user_mmap_get_offset(&entry->rdma_entry);
-	mutex_lock(&fd->mmap_entries_lock);
-	if (fd->mmap_entries[type])
-		rdma_user_mmap_entry_remove(fd->mmap_entries[type]);
-	fd->mmap_entries[type] = &entry->rdma_entry;
-	mutex_unlock(&fd->mmap_entries_lock);
+	if (offset)
+		*offset = rdma_user_mmap_get_offset(&entry->rdma_entry);
+	if (type == RCV_EGRBUF) {
+		mutex_lock(&fd->eager_mmap_entries_lock);
+		list_add_tail(&entry->list, &fd->eager_mmap_entries);
+		mutex_unlock(&fd->eager_mmap_entries_lock);
+	} else {
+		struct rdma_user_mmap_entry *old_entry;
+
+		mutex_lock(&fd->mmap_entries_lock);
+		old_entry = fd->mmap_entries[type];
+		fd->mmap_entries[type] = &entry->rdma_entry;
+		mutex_unlock(&fd->mmap_entries_lock);
+		if (old_entry)
+			rdma_user_mmap_entry_remove(old_entry);
+	}
+	return 0;
+}
+
+static void hfi2_remove_eager_mmap_entries(struct hfi2_filedata *fd)
+{
+	struct hfi2_user_mmap_entry *entry, *tmp;
+	LIST_HEAD(entries);
+
+	mutex_lock(&fd->eager_mmap_entries_lock);
+	list_splice_init(&fd->eager_mmap_entries, &entries);
+	mutex_unlock(&fd->eager_mmap_entries_lock);
+
+	list_for_each_entry_safe(entry, tmp, &entries, list) {
+		list_del(&entry->list);
+		rdma_user_mmap_entry_remove(&entry->rdma_entry);
+	}
+}
+
+static int hfi2_add_eager_mmap_entries(struct ib_ucontext *ucontext,
+				       struct hfi2_filedata *fd)
+{
+	struct hfi2_ctxtdata *uctxt = fd->uctxt;
+	int i, ret;
+
+	hfi2_remove_eager_mmap_entries(fd);
+
+	for (i = 0; i < uctxt->egrbufs.numbufs; i++) {
+		ret = hfi2_mmap_entry_insert(ucontext, fd, RCV_EGRBUF,
+					     uctxt->egrbufs.buffers[i].len, 0,
+					     uctxt->egrbufs.buffers[i].addr,
+					     uctxt->egrbufs.buffers[i].dma, NULL);
+		if (ret) {
+			hfi2_remove_eager_mmap_entries(fd);
+			return ret;
+		}
+	}
+
 	return 0;
 }
 
@@ -80,16 +131,16 @@ void hfi2_dealloc_ucontext(struct ib_ucontext *ucontext)
 
 	fd = rcontext->priv;
 	if (fd) {
-		/* Remove all mmap entries before freeing the filedata */
-		mutex_lock(&fd->mmap_entries_lock);
+		hfi2_remove_eager_mmap_entries(fd);
 		for (i = 0; i < ARRAY_SIZE(fd->mmap_entries); i++) {
-			if (fd->mmap_entries[i]) {
-				rdma_user_mmap_entry_remove(
-					fd->mmap_entries[i]);
-				fd->mmap_entries[i] = NULL;
-			}
+			struct rdma_user_mmap_entry *entry;
+
+			mutex_lock(&fd->mmap_entries_lock);
+			entry = fd->mmap_entries[i];
+			fd->mmap_entries[i] = NULL;
+			mutex_unlock(&fd->mmap_entries_lock);
+			rdma_user_mmap_entry_remove(entry);
 		}
-		mutex_unlock(&fd->mmap_entries_lock);
 		hfi2_dealloc_filedata(fd);
 		rcontext->priv = NULL;
 	}
@@ -199,6 +250,7 @@ UVERBS_HANDLER(HFI2_METHOD_USER_INFO)(struct uverbs_attr_bundle *attrs)
 	{
 		struct ib_ucontext *ucontext = ib_uverbs_get_ucontext(attrs);
 		u64 cr_page_offset;
+		unsigned long events;
 		u32 cbi, cbc;
 		int ret;
 
@@ -231,6 +283,7 @@ UVERBS_HANDLER(HFI2_METHOD_USER_INFO)(struct uverbs_attr_bundle *attrs)
 		cr_page_offset = ((u64)uctxt->sc->hw_free -
 				  (u64)dd->cr_base[uctxt->numa_id].va) &
 				 PAGE_MASK;
+		rsp.sc_credits_offset = offset_in_page(uctxt->sc->hw_free);
 		ret = hfi2_mmap_entry_insert(
 			ucontext, fd, PIO_CRED, PAGE_SIZE, 0,
 			(void *)dd->cr_base[uctxt->numa_id].va + cr_page_offset,
@@ -247,10 +300,7 @@ UVERBS_HANDLER(HFI2_METHOD_USER_INFO)(struct uverbs_attr_bundle *attrs)
 		if (ret)
 			return ret;
 
-		/* Receive eager buffers (DMA-coherent, multi-segment) */
-		ret = hfi2_mmap_entry_insert(ucontext, fd, RCV_EGRBUF,
-					     uctxt->egrbufs.size, 0, NULL, 0,
-					     &rsp.rcvegr_bufbase);
+		ret = hfi2_add_eager_mmap_entries(ucontext, fd);
 		if (ret)
 			return ret;
 
@@ -278,11 +328,12 @@ UVERBS_HANDLER(HFI2_METHOD_USER_INFO)(struct uverbs_attr_bundle *attrs)
 			return ret;
 
 		/* Events page (vmalloc'd) */
+		events = (unsigned long)(dd->events + uctxt_offset(uctxt) +
+					 fd->subctxt);
+		rsp.events_offset = offset_in_page(events);
 		ret = hfi2_mmap_entry_insert(
-			ucontext, fd, EVENTS, PAGE_SIZE,
-			(unsigned long)(dd->events + uctxt_offset(uctxt)) &
-				PAGE_MASK,
-			NULL, 0, &rsp.events_bufbase);
+			ucontext, fd, EVENTS, PAGE_SIZE, events & PAGE_MASK, NULL, 0,
+			&rsp.events_bufbase);
 		if (ret)
 			return ret;
 
@@ -620,7 +671,8 @@ DECLARE_UVERBS_NAMED_METHOD(
 DECLARE_UVERBS_NAMED_METHOD(
 	HFI2_METHOD_USER_INFO,
 	UVERBS_ATTR_PTR_OUT(HFI2_ATTR_USER_INFO_RSP,
-			    UVERBS_ATTR_TYPE(struct hfi2_user_info_rsp),
+			    UVERBS_ATTR_STRUCT(struct hfi2_user_info_rsp,
+					       rheq_bufbase),
 			    UA_MANDATORY));
 
 DECLARE_UVERBS_NAMED_METHOD(
@@ -720,6 +772,76 @@ static const struct file_operations hfi2_sdma_fd_fops = {
 };
 
 static int
+UVERBS_HANDLER(HFI2_METHOD_QUERY_EGR_MMAP)(struct uverbs_attr_bundle *attrs)
+{
+	struct hfi2_filedata *fd = fd_from_attrs(attrs);
+	struct hfi2_query_egr_mmap_cmd cmd;
+	struct hfi2_query_egr_mmap_rsp rsp = {};
+	struct hfi2_egr_mmap_segment *segments;
+	struct hfi2_user_mmap_entry *entry;
+	int capacity, ret;
+	u32 i = 0, max_segments, returned = 0;
+	u64 offset = 0;
+
+	if (!fd->uctxt)
+		return -EINVAL;
+
+	ret = uverbs_copy_from(&cmd, attrs, HFI2_ATTR_QUERY_EGR_MMAP_CMD);
+	if (ret)
+		return ret;
+	if (cmd.reserved)
+		return -EINVAL;
+
+	capacity = uverbs_attr_ptr_get_array_size(
+		attrs, HFI2_ATTR_QUERY_EGR_MMAP_SEGMENTS, sizeof(*segments));
+	if (capacity <= 0)
+		return capacity ?: -EINVAL;
+
+	if (!fd->uctxt->egrbufs.numbufs ||
+	    cmd.first_segment >= fd->uctxt->egrbufs.numbufs)
+		return -EINVAL;
+
+	max_segments = min_t(u32, capacity,
+			     fd->uctxt->egrbufs.numbufs - cmd.first_segment);
+	segments = uverbs_kcalloc(attrs, max_segments, sizeof(*segments));
+	if (IS_ERR(segments))
+		return PTR_ERR(segments);
+
+	mutex_lock(&fd->eager_mmap_entries_lock);
+	list_for_each_entry(entry, &fd->eager_mmap_entries, list) {
+		u64 length = entry->rdma_entry.npages * PAGE_SIZE;
+
+		if (i >= cmd.first_segment && returned < max_segments) {
+			segments[returned].offset = offset;
+			segments[returned].length = length;
+			segments[returned].mmap_offset =
+				rdma_user_mmap_get_offset(&entry->rdma_entry);
+			returned++;
+		}
+		offset += length;
+		i++;
+	}
+	mutex_unlock(&fd->eager_mmap_entries_lock);
+
+	if (i != fd->uctxt->egrbufs.numbufs ||
+	    offset != fd->uctxt->egrbufs.size)
+		return -EINVAL;
+	if (returned != max_segments)
+		return -EINVAL;
+
+	rsp.total_segments = i;
+	rsp.returned_segments = returned;
+	rsp.total_size = offset;
+	ret = uverbs_copy_to(attrs, HFI2_ATTR_QUERY_EGR_MMAP_RSP, &rsp,
+			     sizeof(rsp));
+	if (ret)
+		return ret;
+
+	return uverbs_copy_to(attrs, HFI2_ATTR_QUERY_EGR_MMAP_SEGMENTS,
+			      segments, returned * sizeof(*segments));
+}
+
+static int
 UVERBS_HANDLER(HFI2_METHOD_CREATE_SDMA_FD)(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_ucontext *ucontext = ib_uverbs_get_ucontext(attrs);
@@ -756,6 +878,18 @@ DECLARE_UVERBS_NAMED_METHOD(HFI2_METHOD_CREATE_SDMA_FD,
 						UVERBS_ATTR_TYPE(__s32),
 						UA_MANDATORY));
 
+DECLARE_UVERBS_NAMED_METHOD(
+	HFI2_METHOD_QUERY_EGR_MMAP,
+	UVERBS_ATTR_PTR_IN(HFI2_ATTR_QUERY_EGR_MMAP_CMD,
+			   UVERBS_ATTR_TYPE(struct hfi2_query_egr_mmap_cmd),
+			   UA_MANDATORY),
+	UVERBS_ATTR_PTR_OUT(HFI2_ATTR_QUERY_EGR_MMAP_RSP,
+			    UVERBS_ATTR_TYPE(struct hfi2_query_egr_mmap_rsp),
+			    UA_MANDATORY),
+	UVERBS_ATTR_PTR_OUT(HFI2_ATTR_QUERY_EGR_MMAP_SEGMENTS,
+			    UVERBS_ATTR_MIN_SIZE(sizeof(struct hfi2_egr_mmap_segment)),
+			    UA_MANDATORY));
+
 DECLARE_UVERBS_GLOBAL_METHODS(HFI2_OBJECT_DV0,
 			      &UVERBS_METHOD(HFI2_METHOD_ASSIGN_CTXT),
 			      &UVERBS_METHOD(HFI2_METHOD_CTXT_INFO),
@@ -773,7 +907,8 @@ DECLARE_UVERBS_GLOBAL_METHODS(HFI2_OBJECT_DV1,
 			      &UVERBS_METHOD(HFI2_METHOD_TID_INVAL_READ),
 			      &UVERBS_METHOD(HFI2_METHOD_GET_VERS),
 			      &UVERBS_METHOD(HFI2_METHOD_PIN_STATS),
-			      &UVERBS_METHOD(HFI2_METHOD_CREATE_SDMA_FD));
+			      &UVERBS_METHOD(HFI2_METHOD_CREATE_SDMA_FD),
+			      &UVERBS_METHOD(HFI2_METHOD_QUERY_EGR_MMAP));
 
 const struct uapi_definition hfi2_ib_defs[] = {
 	UAPI_DEF_CHAIN_OBJ_TREE_NAMED(HFI2_OBJECT_DV0),

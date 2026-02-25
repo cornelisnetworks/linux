@@ -52,6 +52,32 @@ void rdma_umap_priv_init(struct rdma_umap_priv *priv,
 }
 EXPORT_SYMBOL(rdma_umap_priv_init);
 
+int rdma_user_mmap_entry_associate_vma(struct ib_ucontext *ucontext,
+				       struct vm_area_struct *vma,
+				       struct rdma_user_mmap_entry *entry)
+{
+	struct ib_uverbs_file *ufile = ucontext->ufile;
+	struct rdma_umap_priv *priv;
+
+	if (!entry || !(vma->vm_flags & VM_SHARED))
+		return -EINVAL;
+
+	if (vma->vm_end - vma->vm_start != entry->npages * PAGE_SIZE)
+		return -EINVAL;
+
+	if (WARN_ON(!vma->vm_file || vma->vm_file->private_data != ufile))
+		return -EINVAL;
+	lockdep_assert_held(&ufile->device->disassociate_srcu);
+
+	priv = kzalloc_obj(*priv);
+	if (!priv)
+		return -ENOMEM;
+
+	rdma_umap_priv_init(priv, vma, entry);
+	return 0;
+}
+EXPORT_SYMBOL(rdma_user_mmap_entry_associate_vma);
+
 /**
  * rdma_user_mmap_io() - Map IO memory into a process
  *

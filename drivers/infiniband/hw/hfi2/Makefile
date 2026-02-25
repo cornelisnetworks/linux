@@ -10,7 +10,8 @@
 obj-$(CONFIG_INFINIBAND_HFI2) += hfi2.o
 
 ccflags-$(CONFIG_HFI2_SDMA_VERBOSITY) += -DCONFIG_HFI2_SDMA_VERBOSITY
-KBUILD_EXTRA_SYMBOLS := $(srctree)/drivers/infiniband/sw/rdmavt/Module.symvers
+KBUILD_EXTRA_SYMBOLS := $(srctree)/drivers/infiniband/core/Module.symvers \
+	$(srctree)/drivers/infiniband/sw/rdmavt/Module.symvers
 
 hfi2-y := \
 	affinity.o \

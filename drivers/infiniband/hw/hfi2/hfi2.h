@@ -1821,7 +1821,9 @@ struct hfi2_filedata {
 	spinlock_t invalid_lock;
 	/* mmap entries tracked for rdma_user_mmap infrastructure */
 	struct rdma_user_mmap_entry *mmap_entries[15]; /* MMAP_TYPE_MAX */
+	struct list_head eager_mmap_entries;
 	struct mutex mmap_entries_lock; /* protect mmap_entries[] updates */
+	struct mutex eager_mmap_entries_lock;
 };
 
 extern struct xarray hfi2_dev_table;

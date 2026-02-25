@@ -103,7 +103,9 @@ struct hfi2_filedata *hfi2_alloc_filedata(struct hfi2_devdata *dd)
 	spin_lock_init(&fd->pq_rcu_lock);
 	spin_lock_init(&fd->tid_lock);
 	spin_lock_init(&fd->invalid_lock);
+	INIT_LIST_HEAD(&fd->eager_mmap_entries);
 	mutex_init(&fd->mmap_entries_lock);
+	mutex_init(&fd->eager_mmap_entries_lock);
 	fd->dd = dd;
 	/* no port yet */
 	fd->ppd = NULL;
@@ -165,13 +167,14 @@ ssize_t hfi2_do_write_iter(struct hfi2_filedata *fd, struct iov_iter *from)
 }
 
 static inline void mmap_cdbg(u16 ctxt, u16 subctxt, u8 type, u8 mapio, u8 vmf,
-			     u64 memaddr, void *memvirt, dma_addr_t memdma,
-			     ssize_t memlen, struct vm_area_struct *vma)
+			     bool dma, u64 memaddr, void *memvirt,
+			     dma_addr_t memdma, ssize_t memlen,
+			     struct vm_area_struct *vma)
 {
 	hfi2_cdbg(
 		PROC,
 		"%u:%u type:%u io/vf/dma:%d/%d/%d, addr:0x%llx, len:%lu(%lu), flags:0x%lx",
-		ctxt, subctxt, type, mapio, vmf, !!memdma,
+		ctxt, subctxt, type, mapio, vmf, dma,
 		memaddr ?: (u64)memvirt, memlen, vma->vm_end - vma->vm_start,
 		vma->vm_flags);
 }
@@ -187,6 +190,7 @@ int hfi2_do_mmap(struct hfi2_filedata *fd, u8 type, struct vm_area_struct *vma,
 	u64 memaddr = entry->address;
 	void *memvirt = entry->memvirt;
 	dma_addr_t memdma = entry->memdma;
+	bool dma = entry->dma;
 	u8 mapio = 0, vmf = 0;
 	ssize_t memlen = rdma_entry->npages * PAGE_SIZE;
 	int ret = 0;
@@ -237,20 +241,8 @@ int hfi2_do_mmap(struct hfi2_filedata *fd, u8 type, struct vm_area_struct *vma,
 		break;
 	case RCV_HDRQ:
 		break;
-	case RCV_EGRBUF: {
-		unsigned long addr;
-		struct page *page;
-		int i;
-		/*
-		 * The RcvEgr buffer need to be handled differently
-		 * as multiple non-contiguous pages need to be mapped
-		 * into the user process.
-		 */
-		if ((vma->vm_end - vma->vm_start) != memlen) {
-			dd_dev_err(
-				dd,
-				"Eager buffer map size invalid (%lu != %lu)\n",
-				(vma->vm_end - vma->vm_start), memlen);
+	case RCV_EGRBUF:
+		if (!memvirt) {
 			ret = -EINVAL;
 			goto done;
 		}
@@ -258,39 +250,8 @@ int hfi2_do_mmap(struct hfi2_filedata *fd, u8 type, struct vm_area_struct *vma,
 			ret = -EPERM;
 			goto done;
 		}
-		vm_flags_clear(vma, VM_MAYWRITE);
-		/*
-		 * The RcvEgr buffer is made up of multiple, independently
-		 * allocated DMA-coherent segments that all need to be
-		 * mapped into a single vma.  This used to be done with
-		 * repeated dma_mmap_coherent() calls that temporarily
-		 * shrank/grew the vma to exactly cover each segment in
-		 * turn, but current kernels track pfn remaps per-vma and
-		 * reject a second remap_pfn_range() call that (as each of
-		 * those calls did) covers the full vma.  Avoid that by
-		 * inserting each segment's pages individually with
-		 * vm_insert_page(), which has no such per-vma restriction.
-		 */
-		addr = vma->vm_start;
-		for (i = 0; i < uctxt->egrbufs.numbufs; i++) {
-			unsigned long off;
-
-			memlen = uctxt->egrbufs.buffers[i].len;
-			memvirt = uctxt->egrbufs.buffers[i].addr;
-			memdma = uctxt->egrbufs.buffers[i].dma;
-			mmap_cdbg(ctxt, subctxt, type, mapio, vmf, memaddr,
-				  memvirt, memdma, memlen, vma);
-			for (off = 0; off < memlen; off += PAGE_SIZE) {
-				page = virt_to_page(memvirt + off);
-				ret = vm_insert_page(vma, addr, page);
-				if (ret)
-					goto done;
-				addr += PAGE_SIZE;
-			}
-		}
-		ret = 0;
-		goto done;
-	}
+		flags &= ~VM_MAYWRITE;
+		break;
 	case UREGS:
 		flags |= VM_DONTCOPY | VM_DONTEXPAND;
 		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
@@ -356,15 +317,18 @@ int hfi2_do_mmap(struct hfi2_filedata *fd, u8 type, struct vm_area_struct *vma,
 	}
 
 	vm_flags_reset(vma, flags);
-	mmap_cdbg(ctxt, subctxt, type, mapio, vmf, memaddr, memvirt, memdma,
-		  memlen, vma);
+	mmap_cdbg(ctxt, subctxt, type, mapio, vmf, dma, memaddr, memvirt,
+		  memdma, memlen, vma);
 	if (vmf) {
 		vma->vm_pgoff = PFN_DOWN(memaddr);
 		vma->vm_ops = &vm_ops;
 		ret = 0;
-	} else if (memdma) {
+	} else if (dma) {
 		ret = dma_mmap_coherent(&dd->pcidev->dev, vma, memvirt, memdma,
 					memlen);
+		if (!ret)
+			ret = rdma_user_mmap_entry_associate_vma(ucontext, vma,
+								 rdma_entry);
 	} else if (mapio) {
 		ret = rdma_user_mmap_io(ucontext, vma, PFN_DOWN(memaddr),
 					memlen, vma->vm_page_prot, rdma_entry);
