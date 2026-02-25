@@ -210,6 +210,8 @@ struct user_sdma_request {
 	/* progress index moving along the iovs array */
 	u8 iov_idx;
 	u8 has_error;
+	/* status of the first packet that completed with an error */
+	int first_error;
 	/* possible appended bytes (16B ICRC QW) */
 	u8 tailsize;
 	/* true if this is a 16B request */
