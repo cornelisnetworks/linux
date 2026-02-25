@@ -1561,7 +1561,6 @@ static int hfi2_check_ah(struct ib_device *ibdev, struct rdma_ah_attr *ah_attr)
 {
 	struct hfi2_ibport *ibp;
 	struct hfi2_pportdata *ppd;
-	struct hfi2_devdata *dd;
 	u8 sc5;
 	u8 sl;
 	u8 vl;
@@ -1573,7 +1572,6 @@ static int hfi2_check_ah(struct ib_device *ibdev, struct rdma_ah_attr *ah_attr)
 	/* test the mapping for validity */
 	ibp = to_iport(ibdev, rdma_ah_get_port_num(ah_attr));
 	ppd = ppd_from_ibp(ibp);
-	dd = dd_from_ppd(ppd);
 
 	sl = rdma_ah_get_sl(ah_attr);
 	if (sl >= ARRAY_SIZE(ibp->sl_to_sc))
@@ -1593,7 +1591,6 @@ static void hfi2_notify_new_ah(struct ib_device *ibdev,
 {
 	struct hfi2_ibport *ibp;
 	struct hfi2_pportdata *ppd;
-	struct hfi2_devdata *dd;
 	u8 sc5;
 	struct rdma_ah_attr *attr = &ah->attr;
 
@@ -1607,7 +1604,6 @@ static void hfi2_notify_new_ah(struct ib_device *ibdev,
 	sc5 = ibp->sl_to_sc[rdma_ah_get_sl(&ah->attr)];
 	hfi2_update_ah_attr(ibdev, attr);
 	hfi2_make_opa_lid(attr);
-	dd = dd_from_ppd(ppd);
 	ah->vl = sc_to_vlt(ppd, sc5);
 	if (ah->vl < num_vls || ah->vl == 15)
 		ah->log_pmtu = ilog2(ppd->vld[ah->vl].mtu);
@@ -1820,6 +1816,7 @@ static int get_hw_stats(struct ib_device *ibdev, struct rdma_hw_stats *stats,
 static const struct ib_device_ops hfi2_dev_ops = {
 	.owner = THIS_MODULE,
 	.driver_id = RDMA_DRIVER_HFI2,
+	.uverbs_abi_ver = HFI2_UVERBS_ABI_VERSION,
 
 	.alloc_hw_device_stats = hfi2_alloc_hw_device_stats,
 	.alloc_hw_port_stats = hfi_alloc_hw_port_stats,
@@ -1837,6 +1834,7 @@ static const struct ib_device_ops hfi2_dev_ops = {
 static const struct ib_device_ops cport_dev_ops = {
 	.owner = THIS_MODULE,
 	.driver_id = RDMA_DRIVER_HFI2,
+	.uverbs_abi_ver = HFI2_UVERBS_ABI_VERSION,
 
 	.alloc_hw_device_stats = hfi2_alloc_hw_device_stats,
 	.alloc_hw_port_stats = hfi_alloc_hw_port_stats,
@@ -1854,6 +1852,7 @@ static const struct ib_device_ops cport_dev_ops = {
 static const struct ib_device_ops vf_dev_ops = {
 	.owner = THIS_MODULE,
 	.driver_id = RDMA_DRIVER_HFI2,
+	.uverbs_abi_ver = HFI2_UVERBS_ABI_VERSION,
 
 	.alloc_hw_device_stats = hfi2_alloc_hw_device_stats,
 	.alloc_hw_port_stats = hfi_alloc_hw_port_stats,
@@ -1975,9 +1974,9 @@ int hfi2_register_ib_device(struct hfi2_devdata *dd)
 		dd->verbs_dev.rdi.dparms.qpn_start = (dd->rsrcs.c.first_rcv_context << 1) -
 			(1 << max_qos_shift);
 	}
-	dd->verbs_dev.rdi.driver_f.qp_priv_alloc = qp_priv_alloc;
+	dd->verbs_dev.rdi.driver_f.qp_priv_alloc = hfi2_qp_priv_alloc;
 	dd->verbs_dev.rdi.driver_f.qp_priv_init = hfi2_qp_priv_init;
-	dd->verbs_dev.rdi.driver_f.qp_priv_free = qp_priv_free;
+	dd->verbs_dev.rdi.driver_f.qp_priv_free = hfi2_qp_priv_free;
 	dd->verbs_dev.rdi.driver_f.free_all_qps = free_all_qps;
 	dd->verbs_dev.rdi.driver_f.notify_qp_reset = notify_qp_reset;
 	dd->verbs_dev.rdi.driver_f.do_send = hfi2_do_send_from_rvt;
