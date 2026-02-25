@@ -1356,6 +1356,7 @@ struct hfi2_cport {
 	unsigned long temp_timeout; /* jiffies when cache times out */
 	atomic_t nping; /* CPORT ping counter */
 	struct task_struct *ping_th; /* kthread currently running ping */
+	struct mutex ping_lock; /* serializes ping_th create/stop/clear */
 	struct xarray trap_xa; /* handlers for MCTXT TRAPs */
 	struct hfi2_psc psc; /* used only by TRAP128 */
 	struct timer_list lost_int_timer;
