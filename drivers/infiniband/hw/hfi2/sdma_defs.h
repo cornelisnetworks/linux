@@ -15,6 +15,7 @@
 #define SDMA_MAP_NONE 0
 #define SDMA_MAP_SINGLE 1
 #define SDMA_MAP_PAGE 2
+#define SDMA_MAP_FRAGMENT 3
 
 #define SDMA_MAP_BITS 2
 #define SDMA_MAP_MASK ((1ull << SDMA_MAP_BITS) - 1)

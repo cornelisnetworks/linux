@@ -584,12 +584,7 @@ static inline int sdma_txinit_ahg(struct hfi2_devdata *dd,
 		calc_num_desc(dd, tx->packet_len) + needs_pad(tx->packet_len);
 	tx->descs[0].qw[0] = 0;
 	tx->descs[0].qw[1] = 0;
-	/*
-	 * Do not bother with initializing .map_type; sdma_set_map_type()
-	 * should overwrite per-desc bits. sdma_get_map_type() should not be
-	 * called for per-desc bits that haven't been set with
-	 * sdma_set_map_type().
-	 */
+	bitmap_zero(tx->map_type, SDMA_MAP_BITS * MAX_DESC);
 	sdma_qw_set(dd, first_desc, tx->descs[0].qw);
 	if (flags & SDMA_TXREQ_F_AHG_COPY)
 		tx->descs[0].qw[1] |=
@@ -639,18 +634,6 @@ static inline int sdma_txinit(struct hfi2_devdata *dd, struct sdma_txreq *tx,
 			      void (*cb)(struct sdma_txreq *, int))
 {
 	return sdma_txinit_ahg(dd, tx, flags, tlen, 0, 0, NULL, 0, cb);
-}
-
-static inline size_t sdma_mapping_len(struct hfi2_devdata *dd,
-				      struct sdma_desc *d)
-{
-	return sdma_qw_get(dd, byte_count, d->qw);
-}
-
-static inline dma_addr_t sdma_mapping_addr(struct hfi2_devdata *dd,
-					   struct sdma_desc *d)
-{
-	return sdma_qw_get(dd, phy_addr, d->qw);
 }
 
 static inline void sdma_set_map_type(struct sdma_txreq *tx, u8 i, u8 type)
@@ -709,6 +692,13 @@ static inline void make_tx_sdma_desc(struct hfi2_devdata *dd,
 {
 #define ALIGN_SIZE 256
 #define ALIGN_MASK (ALIGN_SIZE - 1)
+#define MAKE_TX_SDMA_DESC(_addr, _len) \
+	do { \
+		_make_tx_sdma_desc(dd, tx, type, _addr, _len); \
+		if (type != SDMA_MAP_NONE) \
+			type = SDMA_MAP_FRAGMENT; \
+	} while (0)
+
 	switch (dd->sdma_align) {
 	case ALIGN_256_ALL:
 		/* align head */
@@ -717,19 +707,19 @@ static inline void make_tx_sdma_desc(struct hfi2_devdata *dd,
 
 			if (clen > len)
 				clen = len;
-			_make_tx_sdma_desc(dd, tx, type, addr, clen);
+			MAKE_TX_SDMA_DESC(addr, clen);
 			len -= clen;
 			addr += clen;
 		}
 		/* now aligned, split into full sized chunks */
 		while (len >= ALIGN_SIZE) {
-			_make_tx_sdma_desc(dd, tx, type, addr, ALIGN_SIZE);
+			MAKE_TX_SDMA_DESC(addr, ALIGN_SIZE);
 			len -= ALIGN_SIZE;
 			addr += ALIGN_SIZE;
 		}
 		/* tail overhang */
 		if (len)
-			_make_tx_sdma_desc(dd, tx, type, addr, len);
+			MAKE_TX_SDMA_DESC(addr, len);
 		break;
 
 	case ALIGN_256_HEAD_TAIL: {
@@ -740,20 +730,20 @@ static inline void make_tx_sdma_desc(struct hfi2_devdata *dd,
 			clen = ALIGN_SIZE - (addr & ALIGN_MASK);
 			if (clen > len)
 				clen = len;
-			_make_tx_sdma_desc(dd, tx, type, addr, clen);
+			MAKE_TX_SDMA_DESC(addr, clen);
 			len -= clen;
 			addr += clen;
 		}
 		/* aligned start to aligned tail */
 		clen = len & ~ALIGN_MASK;
 		if (clen) {
-			_make_tx_sdma_desc(dd, tx, type, addr, clen);
+			MAKE_TX_SDMA_DESC(addr, clen);
 			len -= clen;
 			addr += clen;
 		}
 		/* tail overhang */
 		if (len)
-			_make_tx_sdma_desc(dd, tx, type, addr, len);
+			MAKE_TX_SDMA_DESC(addr, len);
 		break;
 	}
 
@@ -765,20 +755,21 @@ static inline void make_tx_sdma_desc(struct hfi2_devdata *dd,
 
 		/* start to aligned tail */
 		if (clen && !same) {
-			_make_tx_sdma_desc(dd, tx, type, addr, clen);
+			MAKE_TX_SDMA_DESC(addr, clen);
 			len -= clen;
 			addr += clen;
 		}
 		/* tail overhang */
 		if (len)
-			_make_tx_sdma_desc(dd, tx, type, addr, len);
+			MAKE_TX_SDMA_DESC(addr, len);
 		break;
 	}
 
 	default:
-		_make_tx_sdma_desc(dd, tx, type, addr, len);
+		MAKE_TX_SDMA_DESC(addr, len);
 		break;
 	}
+#undef MAKE_TX_SDMA_DESC
 #undef ALIGN_SIZE
 #undef ALIGN_MASK
 }
@@ -882,6 +873,7 @@ static inline int sdma_txadd_page(struct hfi2_devdata *dd,
 				  unsigned long offset, u16 len)
 {
 	dma_addr_t addr;
+	int ret;
 
 	if (unlikely(must_coalesce(tx)))
 		return hfi2_do_coalesce(dd, tx, SDMA_MAP_PAGE, NULL, page,
@@ -894,7 +886,11 @@ static inline int sdma_txadd_page(struct hfi2_devdata *dd,
 		return -ENOSPC;
 	}
 
-	return _sdma_txadd_daddr(dd, SDMA_MAP_PAGE, tx, addr, len);
+	ret = _sdma_txadd_daddr(dd, SDMA_MAP_PAGE, tx, addr, len);
+
+	if (ret)
+		dma_unmap_page(&dd->pcidev->dev, addr, len, DMA_TO_DEVICE);
+	return ret;
 }
 
 /**
@@ -945,6 +941,7 @@ static inline int sdma_txadd_kvaddr(struct hfi2_devdata *dd,
 				    u16 len)
 {
 	dma_addr_t addr;
+	int ret;
 
 	if (unlikely(must_coalesce(tx)))
 		return hfi2_do_coalesce(dd, tx, SDMA_MAP_SINGLE, kvaddr, NULL,
@@ -957,7 +954,10 @@ static inline int sdma_txadd_kvaddr(struct hfi2_devdata *dd,
 		return -ENOSPC;
 	}
 
-	return _sdma_txadd_daddr(dd, SDMA_MAP_SINGLE, tx, addr, len);
+	ret = _sdma_txadd_daddr(dd, SDMA_MAP_SINGLE, tx, addr, len);
+	if (ret)
+		dma_unmap_single(&dd->pcidev->dev, addr, len, DMA_TO_DEVICE);
+	return ret;
 }
 
 struct iowait_work;
