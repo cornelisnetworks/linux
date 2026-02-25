@@ -1788,6 +1788,13 @@ struct tid_rb_node;
 
 /* Private data for file operations */
 struct hfi2_filedata {
+	/*
+	 * Reference count covering both the uverbs ucontext that owns
+	 * this filedata and any anon inode fd (e.g. CREATE_SDMA_FD)
+	 * that was handed a raw pointer to it, so the filedata is not
+	 * freed while such an fd is still open.
+	 */
+	struct kref kref;
 	struct srcu_struct pq_srcu;
 	struct hfi2_devdata *dd;
 	struct hfi2_pportdata *ppd;
@@ -1812,6 +1819,9 @@ struct hfi2_filedata {
 	u32 invalid_tid_idx;
 	/* protect invalid_tids array and invalid_tid_idx */
 	spinlock_t invalid_lock;
+	/* mmap entries tracked for rdma_user_mmap infrastructure */
+	struct rdma_user_mmap_entry *mmap_entries[15]; /* MMAP_TYPE_MAX */
+	struct mutex mmap_entries_lock; /* protect mmap_entries[] updates */
 };
 
 extern struct xarray hfi2_dev_table;

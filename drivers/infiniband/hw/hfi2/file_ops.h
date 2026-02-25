@@ -11,6 +11,7 @@
 int hfi2_set_uevent_bits(struct hfi2_pportdata *ppd, const int evtbit);
 struct hfi2_filedata *hfi2_alloc_filedata(struct hfi2_devdata *dd);
 void hfi2_dealloc_filedata(struct hfi2_filedata *fdata);
+void hfi2_filedata_release(struct kref *kref);
 int hfi2_do_assign_ctxt(struct hfi2_filedata *fd,
 			const struct hfi2_assign_ctxt_cmd *uinfo);
 int hfi2_manage_rcvq(struct hfi2_ctxtdata *uctxt, u16 subctxt, int start_stop);

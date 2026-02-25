@@ -97,9 +97,11 @@ struct hfi2_filedata *hfi2_alloc_filedata(struct hfi2_devdata *dd)
 
 	if (!fd || init_srcu_struct(&fd->pq_srcu))
 		goto nomem;
+	kref_init(&fd->kref);
 	spin_lock_init(&fd->pq_rcu_lock);
 	spin_lock_init(&fd->tid_lock);
 	spin_lock_init(&fd->invalid_lock);
+	mutex_init(&fd->mmap_entries_lock);
 	fd->dd = dd;
 	/* no port yet */
 	fd->ppd = NULL;
@@ -482,6 +484,15 @@ static vm_fault_t vma_fault(struct vm_fault *vmf)
 	return 0;
 }
 
+void hfi2_filedata_release(struct kref *kref)
+{
+	struct hfi2_filedata *fdata = container_of(kref, struct hfi2_filedata,
+						   kref);
+
+	cleanup_srcu_struct(&fdata->pq_srcu);
+	kfree(fdata);
+}
+
 void hfi2_dealloc_filedata(struct hfi2_filedata *fdata)
 {
 	struct hfi2_ctxtdata *uctxt = fdata->uctxt;
@@ -553,8 +564,7 @@ void hfi2_dealloc_filedata(struct hfi2_filedata *fdata)
 
 	deallocate_ctxt(uctxt);
 done:
-	cleanup_srcu_struct(&fdata->pq_srcu);
-	kfree(fdata);
+	kref_put(&fdata->kref, hfi2_filedata_release);
 }
 
 /*
