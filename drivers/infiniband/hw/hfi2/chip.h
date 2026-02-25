@@ -1413,6 +1413,10 @@ extern struct cntr_entry wfr_dev_cntrs[];
 extern struct cntr_entry jkr_dev_cntrs[];
 extern struct cntr_entry wfr_port_cntrs[];
 extern struct cntr_entry jkr_port_cntrs[];
+#define CNTR_MAX 0xFFFFFFFFFFFFFFFFULL
+#define CNTR_32BIT_MAX 0x00000000FFFFFFFF
+extern struct cntr_entry shared_dev_cntrs[];
+extern struct cntr_entry shared_port_cntrs[];
 
 struct flag_table {
 	u64 flag;	/* the flag */
