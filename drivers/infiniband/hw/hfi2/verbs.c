@@ -1976,9 +1976,9 @@ int hfi2_register_ib_device(struct hfi2_devdata *dd)
 		dd->verbs_dev.rdi.dparms.qpn_start = (dd->rsrcs.c.first_rcv_context << 1) -
 			(1 << max_qos_shift);
 	}
-	dd->verbs_dev.rdi.driver_f.qp_priv_alloc = qp_priv_alloc;
+	dd->verbs_dev.rdi.driver_f.qp_priv_alloc = hfi2_qp_priv_alloc;
 	dd->verbs_dev.rdi.driver_f.qp_priv_init = hfi2_qp_priv_init;
-	dd->verbs_dev.rdi.driver_f.qp_priv_free = qp_priv_free;
+	dd->verbs_dev.rdi.driver_f.qp_priv_free = hfi2_qp_priv_free;
 	dd->verbs_dev.rdi.driver_f.free_all_qps = free_all_qps;
 	dd->verbs_dev.rdi.driver_f.notify_qp_reset = notify_qp_reset;
 	dd->verbs_dev.rdi.driver_f.do_send = hfi2_do_send_from_rvt;
