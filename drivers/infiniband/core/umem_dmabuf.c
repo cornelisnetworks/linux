@@ -146,6 +146,11 @@ ib_umem_dmabuf_get_with_dma_device(struct ib_device *device,
 	umem->ibdev = device;
 	umem->length = size;
 	umem->address = offset;
+	/*
+	 * Drivers should call ib_umem_find_best_pgsz() to set the iova
+	 * correctly.
+	 */
+	umem->iova = offset;
 	umem->writable = ib_access_writable(access);
 	umem->is_dmabuf = 1;
 
