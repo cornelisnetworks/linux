@@ -1468,32 +1468,28 @@ static int create_workqueues(struct hfi2_devdata *dd)
 	int pidx;
 	struct hfi2_pportdata *ppd;
 
-	if (!dd->hfi2_wq) {
-		dd->hfi2_wq = alloc_workqueue(
-			"hfi%d",
-			WQ_SYSFS | WQ_HIGHPRI | WQ_CPU_INTENSIVE |
-				WQ_MEM_RECLAIM | WQ_PERCPU,
-			HFI2_MAX_ACTIVE_GEN_WQ_ENTRIES, dd->unit);
-		if (!dd->hfi2_wq)
-			goto wq_error;
-	}
+	dd->hfi2_wq = alloc_workqueue("hfi%d",
+				      WQ_SYSFS | WQ_HIGHPRI | WQ_CPU_INTENSIVE |
+					      WQ_MEM_RECLAIM | WQ_PERCPU,
+				      HFI2_MAX_ACTIVE_GEN_WQ_ENTRIES, dd->unit);
+	if (!dd->hfi2_wq)
+		goto wq_error;
+
 	for (pidx = 0; pidx < dd->num_pports; ++pidx) {
 		ppd = dd->pport + pidx;
+		/*
+		 * Make the link workqueue single-threaded to enforce
+		 * serialization.
+		 */
+		ppd->link_wq =
+			alloc_workqueue("hfi_link_%d_%d",
+					WQ_SYSFS | WQ_MEM_RECLAIM | WQ_UNBOUND,
+					1, /* max_active */
+					dd->unit, pidx);
 		if (!ppd->link_wq) {
-			/*
-			 * Make the link workqueue single-threaded to enforce
-			 * serialization.
-			 */
-			ppd->link_wq = alloc_workqueue(
-				"hfi_link_%d_%d",
-				WQ_SYSFS | WQ_MEM_RECLAIM | WQ_UNBOUND,
-				1, /* max_active */
-				dd->unit, pidx);
-			if (!ppd->link_wq) {
-				pr_err("alloc_workqueue failed for port %d\n",
-				       pidx + 1);
-				goto wq_error;
-			}
+			pr_err("alloc_workqueue failed for port %d\n",
+			       pidx + 1);
+			goto wq_error;
 		}
 	}
 	return 0;
@@ -1515,15 +1511,9 @@ static void destroy_workqueues(struct hfi2_devdata *dd)
 	for (pidx = 0; pidx < dd->num_pports; ++pidx) {
 		ppd = dd->pport + pidx;
 
-		if (ppd->link_wq) {
-			destroy_workqueue(ppd->link_wq);
-			ppd->link_wq = NULL;
-		}
+		destroy_workqueue(ppd->link_wq);
 	}
-	if (dd->hfi2_wq) {
-		destroy_workqueue(dd->hfi2_wq);
-		dd->hfi2_wq = NULL;
-	}
+	destroy_workqueue(dd->hfi2_wq);
 }
 
 /**
