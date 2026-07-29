@@ -2045,7 +2045,8 @@ static struct hfi2_devdata *hfi2_alloc_devdata(struct pci_dev *pdev,
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Could not allocate unit ID: error %d\n",
 			-ret);
-		goto bail;
+		rvt_dealloc_device(&dd->verbs_dev.rdi);
+		return ERR_PTR(ret);
 	}
 	dev_set_name(&dd->verbs_dev.rdi.ibdev.dev, "%s_%d", "hfi2", dd->unit);
 	strscpy(dd->verbs_dev.rdi.ibdev.name,
