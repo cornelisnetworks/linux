@@ -1466,6 +1466,7 @@ static int set_txreq_header_ahg(struct user_sdma_request *req,
 	u16 pbclen = le16_to_cpu(req->h.pbc[0]);
 	u32 val32, tidval = 0, lrhlen = get_lrh_len(req, pad_len(req, datalen));
 	size_t array_size = ARRAY_SIZE(ahg);
+	int ret;
 
 	if (pbc2lrh(req, pbclen) != lrhlen) {
 		/* PBC.PbcLengthDWs */
@@ -1583,8 +1584,11 @@ static int set_txreq_header_ahg(struct user_sdma_request *req,
 	trace_hfi2_sdma_user_header_ahg(pq->dd, pq->ctxt, pq->subctxt,
 					req->info.comp_idx, req->sde->this_idx,
 					req->ahg_idx, ahg, idx, tidval);
-	sdma_txinit_ahg(pq->dd, &tx->txreq, SDMA_TXREQ_F_USE_AHG, datalen,
-			req->ahg_idx, idx, ahg, req->hsize, user_sdma_txreq_cb);
+	ret = sdma_txinit_ahg(pq->dd, &tx->txreq, SDMA_TXREQ_F_USE_AHG, datalen,
+			      req->ahg_idx, idx, ahg, req->hsize,
+			      user_sdma_txreq_cb);
+	if (ret)
+		return ret;
 
 	return idx;
 }
