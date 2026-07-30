@@ -6317,11 +6317,13 @@ static int cport_umad_handler(struct hfi2_devdata *dd, u8 op, u8 sideband,
 	/* Ignore RVT_R_REUSE_SGE here, as done by hfi2_rc_rcv and hfi2_uc_rcv */
 	rc = rvt_get_rwqe(qp0, false);
 	if (rc <= 0) {
-		if (rc < 0)
+		if (rc < 0) {
 			rvt_rc_error(qp0, IB_WC_LOC_QP_OP_ERR);
-		else
+			ret = MSG_RSP_STATUS_INVALID_STATE;
+		} else {
 			ppd->ibport_data.rvp.n_vl15_dropped++;
-		ret = MSG_RSP_STATUS_INVALID_STATE;
+			ret = 0; /* Silently drop, don't spam console */
+		}
 		goto out;
 	}
 	rvt_skip_sge(&qp0->r_sge, sizeof(struct ib_grh), true);
