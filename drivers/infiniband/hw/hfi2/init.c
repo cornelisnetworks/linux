@@ -2372,15 +2372,11 @@ static void postinit_cleanup(struct hfi2_devdata *dd)
 	hfi2_release_rsm_rules(dd);
 
 	cleanup_device_data(dd);
-
-	destroy_workqueues(dd);
-	hfi2_pcie_cleanup(dd->pcidev);
-	hfi2_free_devdata(dd);
 }
 
 static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
-	int ret = 0, pidx, initfail = 0;
+	int ret = 0, pidx;
 	struct hfi2_devdata *dd;
 	const struct chip_params *params;
 
@@ -2428,22 +2424,16 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return -EINVAL;
 	}
 
-	/* Allocate the dd so we can get to work */
-	dd = hfi2_alloc_devdata(pdev, params);
-	if (IS_ERR(dd))
-		return PTR_ERR(dd);
-
 	/* Validate some global module parameters */
 	ret = hfi2_validate_rcvhdrcnt(pdev, rcvhdrcnt);
 	if (ret)
-		goto free_dd;
+		return ret;
 
 	/* use the encoding function as a sanitization check */
 	if (!hfi2_encode_rcv_header_entry_size(hfi2_hdrq_entsize)) {
-		dd_dev_err(dd, "Invalid HdrQ Entry size %u\n",
-			   hfi2_hdrq_entsize);
-		ret = -EINVAL;
-		goto free_dd;
+		dev_err(&pdev->dev, "Invalid HdrQ Entry size %u\n",
+			hfi2_hdrq_entsize);
+		return -EINVAL;
 	}
 
 	/* The receive eager buffer size must be set before the receive
@@ -2462,11 +2452,10 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		eager_buffer_size = clamp_val(eager_buffer_size,
 					      MIN_EAGER_BUFFER * 8,
 					      MAX_EAGER_BUFFER_TOTAL);
-		dd_dev_info(dd, "Eager buffer size %u\n", eager_buffer_size);
+		pci_info(pdev, "Eager buffer size %u\n", eager_buffer_size);
 	} else {
-		dd_dev_err(dd, "Invalid Eager buffer size of 0\n");
-		ret = -EINVAL;
-		goto free_dd;
+		dev_err(&pdev->dev, "Invalid Eager buffer size of 0\n");
+		return -EINVAL;
 	}
 
 	/* restrict value of hfi2_rcvarr_split */
@@ -2474,13 +2463,20 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	ret = hfi2_pcie_init(pdev);
 	if (ret)
-		goto free_dd;
+		return ret;
 	if (params->chip_type == CHIP_JKR)
 		mask_aer_unsupported_request(pdev);
 
+	/* Allocate the dd so we can get to work */
+	dd = hfi2_alloc_devdata(pdev, params);
+	if (IS_ERR(dd)) {
+		ret = PTR_ERR(dd);
+		goto clean_pcie;
+	}
+
 	ret = create_workqueues(dd);
 	if (ret)
-		goto pcie_cleanup;
+		goto free_dd;
 
 	/*
 	 * Do device-specific initialization.  If hfi2_init_dd() fails, it
@@ -2491,54 +2487,36 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto destroy_wqs; /* error already printed */
 
 	/* do the generic initialization */
-	if (!ret)
-		initfail = hfi2_init(dd, 0);
+	ret = hfi2_init(dd, 0);
+	if (ret)
+		goto teardown;
 
-	if (!initfail && !ret)
-		ret = hfi2_mad_init(dd);
+	ret = hfi2_mad_init(dd);
+	if (ret)
+		goto teardown;
 
-	if (!initfail && !ret)
-		ret = hfi2_register_ib_device(dd);
+	ret = hfi2_register_ib_device(dd);
+	if (ret)
+		goto free_mad;
 
-	if (!initfail && !ret)
-		ret = hfi2_init_cport_trap128(
-			dd); /* after IB device register */
+	ret = hfi2_init_cport_trap128(dd); /* after IB device register */
+	if (ret)
+		goto free_ib_dev;
 
 	/*
 	 * Now ready for use.  this should be cleared whenever we
-	 * detect a reset, or initiate one.  If earlier failure,
-	 * we still create devices, so diags, etc. can be used
-	 * to determine cause of problem.
+	 * detect a reset, or initiate one.
 	 */
-	if (!initfail && !ret) {
-		int pidx;
+	dd->flags |= HFI2_INITTED;
+	for (pidx = 0; pidx < dd->num_pports; pidx++) {
+		struct hfi2_pportdata *ppd = dd->pport + pidx;
 
-		dd->flags |= HFI2_INITTED;
-		for (pidx = 0; pidx < dd->num_pports; pidx++) {
-			struct hfi2_pportdata *ppd = dd->pport + pidx;
-
-			if (ppd->host_link_state == HLS_UP_ACTIVE)
-				hfi2_go_port_active(ppd);
-		}
-		/* create debufs files after init and ib register */
-		hfi2_dbg_ibdev_init(&dd->verbs_dev);
+		if (ppd->host_link_state == HLS_UP_ACTIVE)
+			hfi2_go_port_active(ppd);
 	}
 
-	if (initfail || ret) {
-		stop_cport(dd);
-		hfi2_msix_clean_up_interrupts(dd);
-		stop_timers(dd);
-		for (pidx = 0; pidx < dd->num_pports; ++pidx)
-			dd->params->stop_port(dd->pport + pidx);
-		if (!ret) {
-			hfi2_unregister_ib_device(dd);
-			hfi2_mad_deinit(dd);
-		}
-		postinit_cleanup(dd);
-		if (initfail)
-			ret = initfail;
-		goto bail; /* everything already cleaned */
-	}
+	/* create debugfs files after init and ib register */
+	hfi2_dbg_ibdev_init(&dd->verbs_dev);
 
 	hfi2_sdma_start(dd);
 	hfi2_init_cport_overtemp(dd);
@@ -2547,13 +2525,24 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	hfi2_vf2pf_ready(dd);
 	return 0;
 
+free_ib_dev:
+	hfi2_unregister_ib_device(dd);
+free_mad:
+	hfi2_mad_deinit(dd);
+teardown:
+	stop_cport(dd);
+	hfi2_msix_clean_up_interrupts(dd);
+	stop_timers(dd);
+	for (pidx = 0; pidx < dd->num_pports; ++pidx)
+		dd->params->stop_port(dd->pport + pidx);
+	postinit_cleanup(dd);
+
 destroy_wqs:
 	destroy_workqueues(dd);
-pcie_cleanup:
-	hfi2_pcie_cleanup(pdev);
 free_dd:
 	hfi2_free_devdata(dd);
-bail:
+clean_pcie:
+	hfi2_pcie_cleanup(pdev);
 	return ret;
 }
 
@@ -2613,6 +2602,9 @@ static void remove_one(struct pci_dev *pdev)
 	stop_timers(dd);
 
 	postinit_cleanup(dd);
+	destroy_workqueues(dd);
+	hfi2_free_devdata(dd);
+	hfi2_pcie_cleanup(pdev);
 }
 
 /*
