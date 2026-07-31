@@ -8213,28 +8213,26 @@ u8 hfi2_encode_rcv_header_entry_size(u8 size)
 
 /**
  * hfi2_validate_rcvhdrcnt - validate hdrcnt
- * @dd: the device data
+ * @pdev: the pci device
  * @thecnt: the header count
  */
-int hfi2_validate_rcvhdrcnt(struct hfi2_devdata *dd, uint thecnt)
+int hfi2_validate_rcvhdrcnt(struct pci_dev *pdev, uint thecnt)
 {
 	if (thecnt <= HFI2_MIN_HDRQ_EGRBUF_CNT) {
-		dd_dev_err(dd, "Receive header queue count too small\n");
+		dev_err(&pdev->dev, "Receive header queue count too small\n");
 		return -EINVAL;
 	}
 
 	if (thecnt > HFI2_MAX_HDRQ_EGRBUF_CNT) {
-		dd_dev_err(
-			dd,
+		dev_err(&pdev->dev,
 			"Receive header queue count cannot be greater than %u\n",
 			HFI2_MAX_HDRQ_EGRBUF_CNT);
 		return -EINVAL;
 	}
 
 	if (thecnt % HDRQ_INCREMENT) {
-		dd_dev_err(
-			dd,
-			"Receive header queue count %d must be divisible by %lu\n",
+		dev_err(&pdev->dev,
+			"Receive header queue count %u must be divisible by %lu\n",
 			thecnt, HDRQ_INCREMENT);
 		return -EINVAL;
 	}

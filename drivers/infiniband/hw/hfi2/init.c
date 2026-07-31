@@ -2434,7 +2434,7 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return PTR_ERR(dd);
 
 	/* Validate some global module parameters */
-	ret = hfi2_validate_rcvhdrcnt(dd, rcvhdrcnt);
+	ret = hfi2_validate_rcvhdrcnt(pdev, rcvhdrcnt);
 	if (ret)
 		goto free_dd;
 

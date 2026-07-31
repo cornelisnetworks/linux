@@ -610,7 +610,7 @@ bool hfi2_wfr_check_synth_status(struct hfi2_devdata *dd);
 void hfi2_wfr_update_synth_status(struct hfi2_devdata *dd);
 
 u8 hfi2_encode_rcv_header_entry_size(u8 size);
-int hfi2_validate_rcvhdrcnt(struct hfi2_devdata *dd, uint thecnt);
+int hfi2_validate_rcvhdrcnt(struct pci_dev *pdev, uint thecnt);
 void hfi2_set_hdrq_regs(struct hfi2_pportdata *ppd, u16 ctxt, u8 entsize,
 			u16 hdrcnt, u8 kdeth_rcv_hdr);
 void hfi2_wfr_update_rcv_hdr_size(struct hfi2_pportdata *ppd, u16 ctxt,
