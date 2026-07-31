@@ -2610,7 +2610,8 @@ void hfi2_verbs_unregister_sysfs(struct hfi2_devdata *dd);
 /* Hook for sysfs read of QSFP */
 int hfi2_qsfp_dump(struct hfi2_pportdata *ppd, char *buf, int len);
 
-int hfi2_pcie_init(struct hfi2_devdata *dd);
+int hfi2_pcie_init(struct pci_dev *pdev);
+void mask_aer_unsupported_request(struct pci_dev *pdev);
 void hfi2_pcie_cleanup(struct pci_dev *pdev);
 int hfi2_pcie_ddinit(struct hfi2_devdata *dd, struct pci_dev *pdev);
 void hfi2_pcie_ddcleanup(struct hfi2_devdata *dd);

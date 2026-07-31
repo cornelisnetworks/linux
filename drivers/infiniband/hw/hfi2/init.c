@@ -2472,9 +2472,11 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* restrict value of hfi2_rcvarr_split */
 	hfi2_rcvarr_split = clamp_val(hfi2_rcvarr_split, 0, 100);
 
-	ret = hfi2_pcie_init(dd);
+	ret = hfi2_pcie_init(pdev);
 	if (ret)
 		goto free_dd;
+	if (params->chip_type == CHIP_JKR)
+		mask_aer_unsupported_request(pdev);
 
 	ret = create_workqueues(dd);
 	if (ret)

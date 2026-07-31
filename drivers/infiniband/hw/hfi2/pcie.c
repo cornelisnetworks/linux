@@ -34,7 +34,7 @@ static int pcie_compl_to = PCI_EXP_COMP_TIMEOUT_RANGE_C |
  * Prevent upstream errors from being reported if a software stray read
  * occurs in a write-only BAR range.
  */
-static void mask_aer_unsupported_request(struct pci_dev *pdev)
+void mask_aer_unsupported_request(struct pci_dev *pdev)
 {
 	u32 mask;
 	int aer;
@@ -52,10 +52,9 @@ static void mask_aer_unsupported_request(struct pci_dev *pdev)
 /*
  * Do all the common PCIe setup and initialization.
  */
-int hfi2_pcie_init(struct hfi2_devdata *dd)
+int hfi2_pcie_init(struct pci_dev *pdev)
 {
 	int ret;
-	struct pci_dev *pdev = dd->pcidev;
 
 	ret = pci_enable_device(pdev);
 	if (ret) {
@@ -71,19 +70,19 @@ int hfi2_pcie_init(struct hfi2_devdata *dd)
 		 * about that, it appears.  If the original BAR was retained
 		 * in the kernel data structures, this may be OK.
 		 */
-		dd_dev_err(dd, "pci enable failed: error %d\n", -ret);
+		dev_err(&pdev->dev, "pci enable failed: error %pe\n",
+			ERR_PTR(ret));
 		return ret;
 	}
 
 	ret = pci_request_regions(pdev, DRIVER_NAME);
 	if (ret) {
-		dd_dev_err(dd, "pci_request_regions fails: err %d\n", -ret);
+		dev_err(&pdev->dev, "pci_request_regions fails: err %pe\n",
+			ERR_PTR(ret));
 		goto bail;
 	}
 
 	pci_set_master(pdev);
-	if (dd->params->chip_type == CHIP_JKR)
-		mask_aer_unsupported_request(pdev);
 	return 0;
 
 bail:
@@ -843,7 +842,7 @@ static void pcie_post_steps(struct hfi2_devdata *dd)
 	 */
 	for (i = 0; i < NUM_PCIE_SERDES; i++) {
 		hfi2_sbus_request(dd, hfi2_pcie_pcs_addrs[dd->hfi2_id][i], 0x03,
-			     WRITE_SBUS_RECEIVER, 0x00022132);
+				  WRITE_SBUS_RECEIVER, 0x00022132);
 	}
 
 	hfi2_clear_sbus_fast_mode(dd);
@@ -889,9 +888,10 @@ static int trigger_sbr(struct hfi2_devdata *dd)
 static void write_gasket_interrupt(struct hfi2_devdata *dd, int index, u16 code,
 				   u16 data)
 {
-	hfi2_write_csr(dd, ASIC_PCIE_SD_INTRPT_LIST + (index * 8),
-		  (((u64)code << ASIC_PCIE_SD_INTRPT_LIST_INTRPT_CODE_SHIFT) |
-		   ((u64)data << ASIC_PCIE_SD_INTRPT_LIST_INTRPT_DATA_SHIFT)));
+	hfi2_write_csr(
+		dd, ASIC_PCIE_SD_INTRPT_LIST + (index * 8),
+		(((u64)code << ASIC_PCIE_SD_INTRPT_LIST_INTRPT_CODE_SHIFT) |
+		 ((u64)data << ASIC_PCIE_SD_INTRPT_LIST_INTRPT_DATA_SHIFT)));
 }
 
 /*
