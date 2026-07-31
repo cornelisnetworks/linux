@@ -414,7 +414,6 @@ void hfi2_qp_wakeup(struct rvt_qp *qp, u32 flag)
 		hfi2_qp_schedule(qp);
 	}
 	spin_unlock_irqrestore(&qp->s_lock, flags);
-	/* Notify hfi2_destroy_qp() if it is waiting. */
 	rvt_put_qp(qp);
 }
 
