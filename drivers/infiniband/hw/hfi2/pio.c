@@ -2052,6 +2052,7 @@ bail:
 void hfi2_free_pio_map(struct hfi2_devdata *dd)
 {
 	struct hfi2_pportdata *ppd;
+	struct pio_vl_map *map;
 	int i;
 
 	for (i = 0; i < dd->num_pports; i++) {
@@ -2059,10 +2060,11 @@ void hfi2_free_pio_map(struct hfi2_devdata *dd)
 		/* Free PIO map if allocated */
 		if (rcu_access_pointer(ppd->pio_map)) {
 			spin_lock_irq(&dd->pio_map_lock);
-			pio_map_free(rcu_access_pointer(ppd->pio_map));
+			map = rcu_access_pointer(ppd->pio_map);
 			RCU_INIT_POINTER(ppd->pio_map, NULL);
 			spin_unlock_irq(&dd->pio_map_lock);
 			synchronize_rcu();
+			pio_map_free(map);
 		}
 		kfree(ppd->kernel_send_context);
 		ppd->kernel_send_context = NULL;

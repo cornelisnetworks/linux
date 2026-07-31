@@ -1376,13 +1376,15 @@ void hfi2_sdma_clean(struct hfi2_devdata *dd)
 
 	for (pidx = 0; pidx < dd->num_pports; pidx++) {
 		struct hfi2_pportdata *ppd = dd->pport + pidx;
+		struct sdma_vl_map *map;
 
 		if (rcu_access_pointer(ppd->sdma_map)) {
 			spin_lock_irq(&dd->sde_map_lock);
-			sdma_map_free(rcu_access_pointer(ppd->sdma_map));
+			map = rcu_access_pointer(ppd->sdma_map);
 			RCU_INIT_POINTER(ppd->sdma_map, NULL);
 			spin_unlock_irq(&dd->sde_map_lock);
 			synchronize_rcu();
+			sdma_map_free(map);
 		}
 	}
 
