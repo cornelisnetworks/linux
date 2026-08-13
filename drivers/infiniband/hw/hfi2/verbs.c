@@ -1783,6 +1783,8 @@ static const struct ib_device_ops cport_dev_ops = {
 	/* keep process mad in the driver */
 	.process_mad = hfi2_cport_process_mad,
 	.rdma_netdev_get_params = hfi2_ipoib_rn_get_params,
+	.mmap = hfi2_mmap,
+	.mmap_free = hfi2_mmap_free,
 };
 
 static const struct ib_device_ops vf_dev_ops = {
