@@ -230,8 +230,8 @@ int hfi2_do_mmap(struct hfi2_filedata *fd, u8 type, struct vm_area_struct *vma,
 	case RCV_HDRQ:
 		break;
 	case RCV_EGRBUF: {
-		unsigned long vm_start_save;
-		unsigned long vm_end_save;
+		unsigned long addr;
+		struct page *page;
 		int i;
 		/*
 		 * The RcvEgr buffer need to be handled differently
@@ -252,33 +252,34 @@ int hfi2_do_mmap(struct hfi2_filedata *fd, u8 type, struct vm_area_struct *vma,
 		}
 		vm_flags_clear(vma, VM_MAYWRITE);
 		/*
-		 * Mmap multiple separate allocations into a single vma.  From
-		 * here, dma_mmap_coherent() calls dma_direct_mmap(), which
-		 * requires the mmap to exactly fill the vma starting at
-		 * vma_start.  Adjust the vma start and end for each eager
-		 * buffer segment mapped.  Restore the originals when done.
+		 * The RcvEgr buffer is made up of multiple, independently
+		 * allocated DMA-coherent segments that all need to be
+		 * mapped into a single vma.  This used to be done with
+		 * repeated dma_mmap_coherent() calls that temporarily
+		 * shrank/grew the vma to exactly cover each segment in
+		 * turn, but current kernels track pfn remaps per-vma and
+		 * reject a second remap_pfn_range() call that (as each of
+		 * those calls did) covers the full vma.  Avoid that by
+		 * inserting each segment's pages individually with
+		 * vm_insert_page(), which has no such per-vma restriction.
 		 */
-		vm_start_save = vma->vm_start;
-		vm_end_save = vma->vm_end;
-		vma->vm_end = vma->vm_start;
+		addr = vma->vm_start;
 		for (i = 0; i < uctxt->egrbufs.numbufs; i++) {
+			unsigned long off;
+
 			memlen = uctxt->egrbufs.buffers[i].len;
 			memvirt = uctxt->egrbufs.buffers[i].addr;
 			memdma = uctxt->egrbufs.buffers[i].dma;
-			vma->vm_end += memlen;
 			mmap_cdbg(ctxt, subctxt, type, mapio, vmf, memaddr,
 				  memvirt, memdma, memlen, vma);
-			ret = dma_mmap_coherent(&dd->pcidev->dev, vma, memvirt,
-						memdma, memlen);
-			if (ret < 0) {
-				vma->vm_start = vm_start_save;
-				vma->vm_end = vm_end_save;
-				goto done;
+			for (off = 0; off < memlen; off += PAGE_SIZE) {
+				page = virt_to_page(memvirt + off);
+				ret = vm_insert_page(vma, addr, page);
+				if (ret)
+					goto done;
+				addr += PAGE_SIZE;
 			}
-			vma->vm_start += memlen;
 		}
-		vma->vm_start = vm_start_save;
-		vma->vm_end = vm_end_save;
 		ret = 0;
 		goto done;
 	}
@@ -448,8 +449,9 @@ void hfi2_dealloc_filedata(struct hfi2_filedata *fdata)
 	 */
 	if (uctxt->sc) {
 		hfi2_sc_disable(uctxt->sc);
-		hfi2_priv_reg_op(dd, uctxt->sc->ppd->hw_pidx, uctxt->sc->hw_context,
-			    uctxt->sc->type, SC_CHK_ADJ_OP, 0);
+		hfi2_priv_reg_op(dd, uctxt->sc->ppd->hw_pidx,
+				 uctxt->sc->hw_context, uctxt->sc->type,
+				 SC_CHK_ADJ_OP, 0);
 	}
 
 	hfi2_free_ctxt_rcv_groups(uctxt);
@@ -1044,7 +1046,7 @@ int hfi2_manage_rcvq(struct hfi2_ctxtdata *uctxt, u16 subctxt, int start_stop)
  * set, if desired, and checks again in future.
  */
 int hfi2_user_event_ack(struct hfi2_ctxtdata *uctxt, u16 subctxt,
-		   unsigned long events)
+			unsigned long events)
 {
 	int i;
 	struct hfi2_devdata *dd = uctxt->dd;
