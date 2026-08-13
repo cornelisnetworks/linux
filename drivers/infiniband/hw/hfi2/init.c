@@ -1842,6 +1842,31 @@ void hfi2_pf0_cleanup(struct hfi2_devdata *dd)
 }
 
 /**
+ * hfi2_free_egrbuf - free a single eager buffer segment
+ * @buf: the eager buffer segment to free
+ *
+ * hfi2_setup_eagerbufs() splits each coherent eager buffer allocation
+ * into individual order-0 pages (via split_page()) so that they can
+ * each be vm_insert_page()'d into a user vma (see hfi2_do_mmap()'s
+ * RCV_EGRBUF case).  Once split, the pages can no longer be freed via
+ * dma_free_coherent(), which would incorrectly try to free them as a
+ * single higher-order compound allocation; free them individually
+ * instead.
+ */
+static void hfi2_free_egrbuf(struct eager_buffer *buf)
+{
+	unsigned long off;
+
+	if (!buf->addr)
+		return;
+	for (off = 0; off < buf->len; off += PAGE_SIZE)
+		free_page((unsigned long)(buf->addr + off));
+	buf->addr = NULL;
+	buf->dma = 0;
+	buf->len = 0;
+}
+
+/**
  * hfi2_free_ctxtdata - free a context's allocated data
  * @dd: the hfi2_ib device
  * @rcd: the ctxtdata structure
@@ -1877,13 +1902,8 @@ void hfi2_free_ctxtdata(struct hfi2_devdata *dd, struct hfi2_ctxtdata *rcd)
 	kfree(rcd->egrbufs.rcvtids);
 	rcd->egrbufs.rcvtids = NULL;
 
-	for (e = 0; e < rcd->egrbufs.alloced; e++) {
-		if (rcd->egrbufs.buffers[e].addr)
-			dma_free_coherent(&dd->pcidev->dev,
-					  rcd->egrbufs.buffers[e].len,
-					  rcd->egrbufs.buffers[e].addr,
-					  rcd->egrbufs.buffers[e].dma);
-	}
+	for (e = 0; e < rcd->egrbufs.alloced; e++)
+		hfi2_free_egrbuf(&rcd->egrbufs.buffers[e]);
 	kfree(rcd->egrbufs.buffers);
 	rcd->egrbufs.alloced = 0;
 	rcd->egrbufs.buffers = NULL;
@@ -2751,6 +2771,19 @@ int hfi2_setup_eagerbufs(struct hfi2_ctxtdata *rcd)
 			&dd->pcidev->dev, rcd->egrbufs.rcvtid_size,
 			&rcd->egrbufs.buffers[idx].dma, GFP_KERNEL);
 		if (rcd->egrbufs.buffers[idx].addr) {
+			/*
+			 * Each eager buffer segment gets mapped into
+			 * userspace one page at a time via vm_insert_page()
+			 * (see hfi2_do_mmap()'s RCV_EGRBUF case), since a
+			 * single vma cannot be the target of more than one
+			 * remap_pfn_range()-based mapping (which is what
+			 * dma_mmap_coherent() uses).  vm_insert_page()
+			 * requires each page to be individually refcounted,
+			 * so split this (possibly higher-order) coherent
+			 * allocation into individual order-0 pages now.
+			 */
+			split_page(virt_to_page(rcd->egrbufs.buffers[idx].addr),
+				   get_order(rcd->egrbufs.rcvtid_size));
 			rcd->egrbufs.buffers[idx].len =
 				rcd->egrbufs.rcvtid_size;
 			rcd->egrbufs.rcvtids[rcd->egrbufs.alloced].addr =
@@ -2880,15 +2913,8 @@ int hfi2_setup_eagerbufs(struct hfi2_ctxtdata *rcd)
 bail_rcvegrbuf_phys:
 	for (idx = 0;
 	     idx < rcd->egrbufs.alloced && rcd->egrbufs.buffers[idx].addr;
-	     idx++) {
-		dma_free_coherent(&dd->pcidev->dev,
-				  rcd->egrbufs.buffers[idx].len,
-				  rcd->egrbufs.buffers[idx].addr,
-				  rcd->egrbufs.buffers[idx].dma);
-		rcd->egrbufs.buffers[idx].addr = NULL;
-		rcd->egrbufs.buffers[idx].dma = 0;
-		rcd->egrbufs.buffers[idx].len = 0;
-	}
+	     idx++)
+		hfi2_free_egrbuf(&rcd->egrbufs.buffers[idx]);
 
 	return ret;
 }
