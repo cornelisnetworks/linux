@@ -2213,18 +2213,22 @@ int rvt_post_srq_recv(struct ib_srq *ibsrq, const struct ib_recv_wr *wr,
 			return -EINVAL;
 		}
 
-		spin_lock_irqsave(&srq->rq.kwq->p_lock, flags);
+		spin_lock_irqsave(&srq->rq.lock, flags);
 		wq = srq->rq.kwq;
+		spin_lock(&wq->p_lock);
+		spin_unlock(&srq->rq.lock);
 		next = wq->head + 1;
 		if (next >= srq->rq.size)
 			next = 0;
 		if (next == READ_ONCE(wq->tail)) {
-			spin_unlock_irqrestore(&srq->rq.kwq->p_lock, flags);
+			spin_unlock_irqrestore(&wq->p_lock, flags);
 			*bad_wr = wr;
 			return -ENOMEM;
 		}
 
-		wqe = rvt_get_rwqe_ptr(&srq->rq, wq->head);
+		wqe = (struct rvt_rwqe *)((char *)wq->curr_wq +
+			(sizeof(struct rvt_rwqe) +
+			 srq->rq.max_sge * sizeof(struct ib_sge)) * wq->head);
 		wqe->wr_id = wr->wr_id;
 		wqe->num_sge = wr->num_sge;
 		for (i = 0; i < wr->num_sge; i++) {
@@ -2234,7 +2238,7 @@ int rvt_post_srq_recv(struct ib_srq *ibsrq, const struct ib_recv_wr *wr,
 		}
 		/* Make sure queue entry is written before the head index. */
 		smp_store_release(&wq->head, next);
-		spin_unlock_irqrestore(&srq->rq.kwq->p_lock, flags);
+		spin_unlock_irqrestore(&wq->p_lock, flags);
 	}
 	return 0;
 }
@@ -2308,21 +2312,26 @@ bad_lkey:
 
 /**
  * get_rvt_head - get head indices of the circular buffer
- * @rq: data structure for request queue entry
- * @ip: the QP
+ * @kwq: kernel request queue
+ * @wq: user request queue
  *
  * Return - head index value
  */
-static inline u32 get_rvt_head(struct rvt_rq *rq, void *ip)
+static inline u32 get_rvt_head(struct rvt_krwq *kwq, struct rvt_rwq *wq)
 {
-	u32 head;
+	if (wq)
+		return RDMA_READ_UAPI_ATOMIC(wq->head);
+	return kwq->head;
+}
 
-	if (ip)
-		head = RDMA_READ_UAPI_ATOMIC(rq->wq->head);
-	else
-		head = rq->kwq->head;
-
-	return head;
+static inline struct rvt_rwqe *
+rvt_get_rwqe_ptr_kwq(struct rvt_rq *rq, struct rvt_krwq *kwq,
+		     unsigned int n)
+{
+	return (struct rvt_rwqe *)
+		((char *)kwq->curr_wq +
+		 (sizeof(struct rvt_rwqe) +
+		  rq->max_sge * sizeof(struct ib_sge)) * n);
 }
 
 /**
@@ -2339,7 +2348,7 @@ int rvt_get_rwqe(struct rvt_qp *qp, bool wr_id_only)
 {
 	unsigned long flags;
 	struct rvt_rq *rq;
-	struct rvt_krwq *kwq = NULL;
+	struct rvt_krwq *kwq;
 	struct rvt_rwq *wq;
 	struct rvt_srq *srq;
 	struct rvt_rwqe *wqe;
@@ -2347,56 +2356,53 @@ int rvt_get_rwqe(struct rvt_qp *qp, bool wr_id_only)
 	u32 tail;
 	u32 head;
 	int ret;
-	void *ip = NULL;
+	bool user;
 
 	if (qp->ibqp.srq) {
 		srq = ibsrq_to_rvtsrq(qp->ibqp.srq);
 		handler = srq->ibsrq.event_handler;
 		rq = &srq->rq;
-		ip = srq->ip;
+		spin_lock_irqsave(&rq->lock, flags);
+		kwq = rq->kwq;
+		spin_lock(&kwq->c_lock);
+		spin_unlock(&rq->lock);
+		wq = rq->wq;
+		user = !!wq;
 	} else {
 		srq = NULL;
 		handler = NULL;
 		rq = &qp->r_rq;
-		ip = qp->ip;
+		spin_lock_irqsave(&rq->kwq->c_lock, flags);
+		kwq = rq->kwq;
+		wq = rq->wq;
+		user = !!qp->ip;
 	}
 
-	spin_lock_irqsave(&rq->kwq->c_lock, flags);
 	if (!(ib_rvt_state_ops[qp->state] & RVT_PROCESS_RECV_OK)) {
 		ret = 0;
 		goto unlock;
 	}
-	kwq = rq->kwq;
-	if (ip) {
-		wq = rq->wq;
+	if (user)
 		tail = RDMA_READ_UAPI_ATOMIC(wq->tail);
-	} else {
+	else
 		tail = kwq->tail;
-	}
 
-	/* Validate tail before using it since it is user writable. */
 	if (tail >= rq->size)
 		tail = 0;
 
 	if (kwq->count < RVT_RWQ_COUNT_THRESHOLD) {
-		head = get_rvt_head(rq, ip);
+		head = get_rvt_head(kwq, wq);
 		kwq->count = rvt_get_rq_count(rq, head, tail);
 	}
 	if (unlikely(kwq->count == 0)) {
 		ret = 0;
 		goto unlock;
 	}
-	/* Make sure entry is read after the count is read. */
 	smp_rmb();
-	wqe = rvt_get_rwqe_ptr(rq, tail);
-	/*
-	 * Even though we update the tail index in memory, the verbs
-	 * consumer is not supposed to post more entries until a
-	 * completion is generated.
-	 */
+	wqe = rvt_get_rwqe_ptr_kwq(rq, kwq, tail);
 	if (++tail >= rq->size)
 		tail = 0;
-	if (ip)
+	if (user)
 		RDMA_WRITE_UAPI_ATOMIC(wq->tail, tail);
 	else
 		kwq->tail = tail;
@@ -2410,30 +2416,24 @@ int rvt_get_rwqe(struct rvt_qp *qp, bool wr_id_only)
 	ret = 1;
 	set_bit(RVT_R_WRID_VALID, &qp->r_aflags);
 	if (handler) {
-		/*
-		 * Validate head pointer value and compute
-		 * the number of remaining WQEs.
-		 */
 		if (kwq->count < srq->limit) {
-			kwq->count =
-				rvt_get_rq_count(rq,
-						 get_rvt_head(rq, ip), tail);
+			kwq->count = rvt_get_rq_count(rq,
+						      get_rvt_head(kwq, wq), tail);
 			if (kwq->count < srq->limit) {
 				struct ib_event ev;
 
 				srq->limit = 0;
-				spin_unlock_irqrestore(&rq->kwq->c_lock, flags);
+				spin_unlock_irqrestore(&kwq->c_lock, flags);
 				ev.device = qp->ibqp.device;
 				ev.element.srq = qp->ibqp.srq;
 				ev.event = IB_EVENT_SRQ_LIMIT_REACHED;
 				handler(&ev, srq->ibsrq.srq_context);
-				goto bail;
+				return ret;
 			}
 		}
 	}
 unlock:
-	spin_unlock_irqrestore(&rq->kwq->c_lock, flags);
-bail:
+	spin_unlock_irqrestore(&kwq->c_lock, flags);
 	return ret;
 }
 EXPORT_SYMBOL(rvt_get_rwqe);

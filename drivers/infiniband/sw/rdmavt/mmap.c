@@ -37,7 +37,8 @@ void rvt_release_mmap_info(struct kref *ref)
 	struct rvt_dev_info *rdi = ib_to_rvt(ip->context->device);
 
 	spin_lock_irq(&rdi->pending_lock);
-	list_del(&ip->pending_mmaps);
+	if (!list_empty(&ip->pending_mmaps))
+		list_del_init(&ip->pending_mmaps);
 	spin_unlock_irq(&rdi->pending_lock);
 
 	vfree(ip->obj);
@@ -100,21 +101,24 @@ int rvt_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 		if (size > ip->size)
 			break;
 
+		kref_get(&ip->ref);
 		list_del_init(&ip->pending_mmaps);
 		spin_unlock_irq(&rdi->pending_lock);
 
 		ret = remap_vmalloc_range(vma, ip->obj, 0);
-		if (ret)
-			goto done;
-		vma->vm_ops = &rvt_vm_ops;
-		vma->vm_private_data = ip;
-		rvt_vma_open(vma);
+		if (!ret) {
+			vma->vm_ops = &rvt_vm_ops;
+			vma->vm_private_data = ip;
+			rvt_vma_open(vma);
+		}
+		kref_put(&ip->ref, rvt_release_mmap_info);
 		goto done;
 	}
 	spin_unlock_irq(&rdi->pending_lock);
 done:
 	return ret;
 }
+EXPORT_SYMBOL(rvt_mmap);
 
 /**
  * rvt_create_mmap_info - allocate information for hfi1_mmap
@@ -125,13 +129,11 @@ done:
  *
  * Return: rvt_mmap struct on success, ERR_PTR on failure
  */
-struct rvt_mmap_info *rvt_create_mmap_info(struct rvt_dev_info *rdi, u32 size,
-					   struct ib_udata *udata, void *obj)
+static struct rvt_mmap_info *
+rvt_create_mmap_info_context(struct rvt_dev_info *rdi, u32 size,
+			     struct ib_ucontext *context, void *obj)
 {
 	struct rvt_mmap_info *ip;
-
-	if (!udata)
-		return ERR_PTR(-EINVAL);
 
 	ip = kmalloc_node(sizeof(*ip), GFP_KERNEL, rdi->dparms.node);
 	if (!ip)
@@ -148,34 +150,22 @@ struct rvt_mmap_info *rvt_create_mmap_info(struct rvt_dev_info *rdi, u32 size,
 
 	INIT_LIST_HEAD(&ip->pending_mmaps);
 	ip->size = size;
-	ip->context =
-		container_of(udata, struct uverbs_attr_bundle, driver_udata)
-			->context;
+	ip->context = context;
 	ip->obj = obj;
 	kref_init(&ip->ref);
 
 	return ip;
 }
 
-/**
- * rvt_update_mmap_info - update a mem map
- * @rdi: rvt dev struct
- * @ip: mmap info pointer
- * @size: size to grow by
- * @obj: opaque pointer to cq, wq, etc.
- */
-void rvt_update_mmap_info(struct rvt_dev_info *rdi, struct rvt_mmap_info *ip,
-			  u32 size, void *obj)
+struct rvt_mmap_info *rvt_create_mmap_info(struct rvt_dev_info *rdi, u32 size,
+					   struct ib_udata *udata, void *obj)
 {
-	size = PAGE_ALIGN(size);
+	struct ib_ucontext *context;
 
-	spin_lock_irq(&rdi->mmap_offset_lock);
-	if (rdi->mmap_offset == 0)
-		rdi->mmap_offset = MMAP_OFFSET_START;
-	ip->offset = rdi->mmap_offset;
-	rdi->mmap_offset += PAGE_SIZE;
-	spin_unlock_irq(&rdi->mmap_offset_lock);
+	if (!udata)
+		return ERR_PTR(-EINVAL);
 
-	ip->size = size;
-	ip->obj = obj;
+	context = container_of(udata, struct uverbs_attr_bundle, driver_udata)
+			  ->context;
+	return rvt_create_mmap_info_context(rdi, size, context, obj);
 }

@@ -132,15 +132,16 @@ int rvt_modify_srq(struct ib_srq *ibsrq, struct ib_srq_attr *attr,
 	int ret = 0;
 
 	if (attr_mask & IB_SRQ_MAX_WR) {
-		struct rvt_krwq *okwq = NULL;
+		struct rvt_mmap_info *new_ip = NULL;
+		struct rvt_mmap_info *old_ip;
+		struct rvt_krwq *okwq;
 		struct rvt_rwq *owq = NULL;
 		struct rvt_rwqe *p;
-		u32 sz, size, n, head, tail;
+		unsigned long flags;
+		u32 sz, size, n, head, tail, nsge;
+		bool mapped;
 
-		/* Check that the requested sizes are below the limits. */
-		if ((attr->max_wr > dev->dparms.props.max_srq_wr) ||
-		    ((attr_mask & IB_SRQ_LIMIT) ?
-		     attr->srq_limit : srq->limit) > attr->max_wr)
+		if (attr->max_wr > dev->dparms.props.max_srq_wr)
 			return -EINVAL;
 		sz = sizeof(struct rvt_rwqe) +
 			srq->rq.max_sge * sizeof(struct ib_sge);
@@ -148,32 +149,59 @@ int rvt_modify_srq(struct ib_srq *ibsrq, struct ib_srq_attr *attr,
 		if (rvt_alloc_rq(&tmp_rq, size * sz, dev->dparms.node,
 				 udata))
 			return -ENOMEM;
-		/* Check that we can write the offset to mmap. */
-		if (udata && udata->inlen >= sizeof(__u64)) {
-			__u64 offset = 0;
 
+		spin_lock_irqsave(&srq->rq.lock, flags);
+		mapped = !!srq->ip;
+		spin_unlock_irqrestore(&srq->rq.lock, flags);
+
+		if (mapped) {
+			if (!udata || udata->inlen < sizeof(offset_addr)) {
+				ret = -EINVAL;
+				goto bail_free;
+			}
 			ret = ib_copy_from_udata(&offset_addr, udata,
 						 sizeof(offset_addr));
 			if (ret)
 				goto bail_free;
-			if (copy_to_user(u64_to_user_ptr(offset_addr), &offset,
-					 sizeof(offset))) {
+			new_ip = rvt_create_mmap_info(dev,
+						      sizeof(struct rvt_rwq) + size * sz,
+						      udata, tmp_rq.wq);
+			if (IS_ERR(new_ip)) {
+				ret = PTR_ERR(new_ip);
+				new_ip = NULL;
+				goto bail_free;
+			}
+			if (copy_to_user(u64_to_user_ptr(offset_addr), &new_ip->offset,
+					 sizeof(new_ip->offset))) {
 				ret = -EFAULT;
 				goto bail_free;
 			}
 		}
 
-		spin_lock_irq(&srq->rq.kwq->c_lock);
-		/*
-		 * validate head and tail pointer values and compute
-		 * the number of remaining WQEs.
-		 */
+		spin_lock_irqsave(&srq->rq.lock, flags);
+		okwq = srq->rq.kwq;
+		spin_lock(&okwq->c_lock);
+		spin_lock(&okwq->p_lock);
+		old_ip = srq->ip;
+		if (!!old_ip != mapped || (!!udata != mapped) ||
+		    (!!new_ip != mapped)) {
+			ret = -EBUSY;
+			goto bail_unlock;
+		}
+		if (attr_mask & IB_SRQ_LIMIT) {
+			if (attr->srq_limit > attr->max_wr) {
+				ret = -EINVAL;
+				goto bail_unlock;
+			}
+		} else if (srq->limit > attr->max_wr) {
+			ret = -EINVAL;
+			goto bail_unlock;
+		}
 		if (udata) {
 			owq = srq->rq.wq;
 			head = RDMA_READ_UAPI_ATOMIC(owq->head);
 			tail = RDMA_READ_UAPI_ATOMIC(owq->tail);
 		} else {
-			okwq = srq->rq.kwq;
 			head = okwq->head;
 			tail = okwq->tail;
 		}
@@ -196,21 +224,24 @@ int rvt_modify_srq(struct ib_srq *ibsrq, struct ib_srq_attr *attr,
 			struct rvt_rwqe *wqe;
 			int i;
 
-			wqe = rvt_get_rwqe_ptr(&srq->rq, tail);
+			wqe = (struct rvt_rwqe *)((char *)okwq->curr_wq + sz * tail);
 			p->wr_id = wqe->wr_id;
-			p->num_sge = wqe->num_sge;
-			for (i = 0; i < wqe->num_sge; i++)
+			nsge = min_t(u32, wqe->num_sge, srq->rq.max_sge);
+			p->num_sge = nsge;
+			for (i = 0; i < nsge; i++)
 				p->sg_list[i] = wqe->sg_list[i];
 			n++;
 			p = (struct rvt_rwqe *)((char *)p + sz);
 			if (++tail >= srq->rq.size)
 				tail = 0;
 		}
+
 		srq->rq.kwq = tmp_rq.kwq;
 		if (udata) {
 			srq->rq.wq = tmp_rq.wq;
 			RDMA_WRITE_UAPI_ATOMIC(tmp_rq.wq->head, n);
 			RDMA_WRITE_UAPI_ATOMIC(tmp_rq.wq->tail, 0);
+			srq->ip = new_ip;
 		} else {
 			tmp_rq.kwq->head = n;
 			tmp_rq.kwq->tail = 0;
@@ -218,53 +249,47 @@ int rvt_modify_srq(struct ib_srq *ibsrq, struct ib_srq_attr *attr,
 		srq->rq.size = size;
 		if (attr_mask & IB_SRQ_LIMIT)
 			srq->limit = attr->srq_limit;
-		spin_unlock_irq(&srq->rq.kwq->c_lock);
-
-		vfree(owq);
-		kvfree(okwq);
-
-		if (srq->ip) {
-			struct rvt_mmap_info *ip = srq->ip;
-			struct rvt_dev_info *dev = ib_to_rvt(srq->ibsrq.device);
-			u32 s = sizeof(struct rvt_rwq) + size * sz;
-
-			rvt_update_mmap_info(dev, ip, s, tmp_rq.wq);
-
-			/*
-			 * Return the offset to mmap.
-			 * See rvt_mmap() for details.
-			 */
-			if (udata && udata->inlen >= sizeof(__u64)) {
-				if (copy_to_user(u64_to_user_ptr(offset_addr),
-						 &ip->offset,
-						 sizeof(ip->offset)))
-					return -EFAULT;
-			}
-
-			/*
-			 * Put user mapping info onto the pending list
-			 * unless it already is on the list.
-			 */
-			spin_lock_irq(&dev->pending_lock);
-			if (list_empty(&ip->pending_mmaps))
-				list_add(&ip->pending_mmaps,
-					 &dev->pending_mmaps);
-			spin_unlock_irq(&dev->pending_lock);
+		if (new_ip) {
+			spin_lock(&dev->pending_lock);
+			list_add(&new_ip->pending_mmaps, &dev->pending_mmaps);
+			spin_unlock(&dev->pending_lock);
 		}
+		spin_unlock(&okwq->p_lock);
+		spin_unlock(&okwq->c_lock);
+		spin_unlock_irqrestore(&srq->rq.lock, flags);
+
+		if (old_ip)
+			kref_put(&old_ip->ref, rvt_release_mmap_info);
+		else
+			vfree(owq);
+		kvfree(okwq);
+		return 0;
+
+bail_unlock:
+		spin_unlock(&okwq->p_lock);
+		spin_unlock(&okwq->c_lock);
+		spin_unlock_irqrestore(&srq->rq.lock, flags);
+bail_free:
+		if (new_ip) {
+			new_ip->obj = NULL;
+			kref_put(&new_ip->ref, rvt_release_mmap_info);
+		}
+		rvt_free_rq(&tmp_rq);
+		return ret;
 	} else if (attr_mask & IB_SRQ_LIMIT) {
-		spin_lock_irq(&srq->rq.kwq->c_lock);
+		struct rvt_krwq *kwq;
+		unsigned long flags;
+
+		spin_lock_irqsave(&srq->rq.lock, flags);
+		kwq = srq->rq.kwq;
+		spin_lock(&kwq->c_lock);
 		if (attr->srq_limit >= srq->rq.size)
 			ret = -EINVAL;
 		else
 			srq->limit = attr->srq_limit;
-		spin_unlock_irq(&srq->rq.kwq->c_lock);
+		spin_unlock(&kwq->c_lock);
+		spin_unlock_irqrestore(&srq->rq.lock, flags);
 	}
-	return ret;
-
-bail_unlock:
-	spin_unlock_irq(&srq->rq.kwq->c_lock);
-bail_free:
-	rvt_free_rq(&tmp_rq);
 	return ret;
 }
 
@@ -278,10 +303,13 @@ bail_free:
 int rvt_query_srq(struct ib_srq *ibsrq, struct ib_srq_attr *attr)
 {
 	struct rvt_srq *srq = ibsrq_to_rvtsrq(ibsrq);
+	unsigned long flags;
 
+	spin_lock_irqsave(&srq->rq.lock, flags);
 	attr->max_wr = srq->rq.size - 1;
 	attr->max_sge = srq->rq.max_sge;
 	attr->srq_limit = srq->limit;
+	spin_unlock_irqrestore(&srq->rq.lock, flags);
 	return 0;
 }
 
