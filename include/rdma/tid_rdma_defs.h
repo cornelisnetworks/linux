@@ -104,5 +104,17 @@ enum {
  */
 #define IB_WR_TID_RDMA_WRITE IB_WR_RESERVED1
 #define IB_WR_TID_RDMA_READ  IB_WR_RESERVED2
+#define IB_WR_BULKSVC_WRITE   IB_WR_RESERVED4
+#define IB_WR_BULKSVC_READ  IB_WR_RESERVED5
+#define IB_WR_BULKSVC_WRITE_WITH_IMM IB_WR_RESERVED6
+#define IB_WR_BULKSVC_SEND IB_WR_RESERVED7
+#define IB_WR_BULKSVC_SEND_WITH_IMM IB_WR_RESERVED8
+
+static inline bool ib_wr_opcode_is_hfi2_bulksvc(enum ib_wr_opcode op)
+{
+	return op == IB_WR_BULKSVC_WRITE || op == IB_WR_BULKSVC_READ ||
+	       op == IB_WR_BULKSVC_WRITE_WITH_IMM ||
+	       op == IB_WR_BULKSVC_SEND || op == IB_WR_BULKSVC_SEND_WITH_IMM;
+}
 
 #endif /* TID_RDMA_DEFS_H */
