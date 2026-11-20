@@ -104,6 +104,7 @@
 #define OPA_LINK_WIDTH_3X            0x0004
 #define OPA_LINK_WIDTH_4X            0x0008
 
+#define OPA_CAP_MASK4_Lmc3ForSriov                (1 << 3)
 #define OPA_CAP_MASK3_IsEthOnFabricSupported      (1 << 13)
 #define OPA_CAP_MASK3_IsSnoopSupported            (1 << 7)
 #define OPA_CAP_MASK3_IsAsyncSC2VLSupported       (1 << 6)
@@ -364,9 +365,15 @@ struct opa_port_info {
 
 	__be32 ib_cap_mask;
 	__be16 reserved9;                    /* was ib_cap_mask2 */
-	__be16 opa_cap_mask;
+	union {
+		__be16 opa_cap_mask;
+		__be16 opa_cap3_mask;
+	};
 
-	__be32 reserved10;                   /* was link_roundtrip_latency */
+	union {
+		__be32 reserved10;
+		__be32 opa_cap4_mask;
+	};
 	__be16 overall_buffer_space;
 	__be16 reserved11;                   /* was max_credit_hint */
 
